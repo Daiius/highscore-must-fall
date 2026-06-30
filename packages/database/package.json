@@ -1,0 +1,28 @@
+{
+  "name": "database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Drizzle スキーマ・マイグレーション・DB クライアント・seed。",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "migrate": "drizzle-kit migrate",
+    "generate": "drizzle-kit generate",
+    "push": "drizzle-kit push",
+    "seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "catalog:",
+    "drizzle-zod": "catalog:",
+    "mysql2": "catalog:",
+    "shared": "workspace:*"
+  },
+  "devDependencies": {
+    "drizzle-kit": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

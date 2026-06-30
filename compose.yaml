@@ -1,0 +1,99 @@
+# 開発環境（Q: docker compose watch / bind mount 最小）。
+# `pnpm dev` = `docker compose watch`。実体の同期は bind mount ではなく watch の sync で行う。
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      TZ: "Asia/Tokyo"
+    env_file:
+      - .env.database
+    volumes:
+      - db-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    cap_add:
+      - SYS_NICE
+    healthcheck:
+      test: mysql -u $$MYSQL_USER -p$$MYSQL_PASSWORD $$MYSQL_DATABASE -e "select 1;"
+      interval: 5s
+      timeout: 20s
+      retries: 3
+      start_period: 5s
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    env_file:
+      - .env.database
+      - .env.server
+    environment:
+      TZ: "Asia/Tokyo"
+    command: pnpm --filter server dev
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    volumes:
+      - blob-data:/workspace/packages/server/.blob # MVP の BlobStore ローカル実装の保存先
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./packages/server
+          target: /workspace/packages/server
+          ignore: [node_modules/, dist/, "*.tsbuildinfo", "*.log"]
+        - action: sync+restart
+          path: ./packages/shared
+          target: /workspace/packages/shared
+          ignore: [node_modules/, dist/]
+        - action: sync+restart
+          path: ./packages/database
+          target: /workspace/packages/database
+          ignore: [node_modules/, dist/]
+        - action: rebuild
+          path: pnpm-lock.yaml
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    env_file:
+      - .env.web
+    environment:
+      TZ: "Asia/Tokyo"
+    command: pnpm --filter web dev --host
+    depends_on:
+      - server
+    ports:
+      - "5173:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./packages/web
+          target: /workspace/packages/web
+          ignore: [node_modules/, dist/, "*.tsbuildinfo", "*.log"]
+        - action: sync
+          path: ./packages/shared
+          target: /workspace/packages/shared
+          ignore: [node_modules/, dist/]
+        - action: rebuild
+          path: pnpm-lock.yaml
+
+  # (Phase3) サーバ側 LLM 全自動分析のジョブ処理。MVP では起動しない（profile で隔離）。
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.dev
+  #   profiles: ["phase3"]
+  #   working_dir: /workspace
+  #   command: pnpm --filter worker dev
+  #   depends_on:
+  #     server:
+  #       condition: service_started
+
+volumes:
+  db-data:
+  blob-data:

@@ -1,0 +1,8 @@
+# git 2.55+ の config ベース hooks 定義（リポジトリ管理）。
+# .git/config から include.path で読み込ませる（.githooks/install.sh が冪等に設定）。
+[hook "biome"]
+	event = pre-commit
+	command = ./.githooks/pre-commit
+[hook "typecheck"]
+	event = pre-push
+	command = pnpm -s typecheck

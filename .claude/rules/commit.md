@@ -1,0 +1,10 @@
+# ルール: コミット
+
+- メッセージは簡潔に、何を・なぜ。1コミット1論点を心がける。
+- amend する前に `git log --oneline @{u}..HEAD` で未 push を確認する。push 済みなら新コミットで修正する。
+- コミット/プッシュはユーザーから依頼された時のみ行う。デフォルトブランチ上なら先にブランチを切る。
+- 秘密情報（`.env*`・OAuth クレデンシャル・本番/開発の具体情報）は絶対にコミットしない。`.gitignore` を信頼しきらず差分を確認する。
+- Git hooks は **git 2.55+ の config ベース hooks**（`.githooks.gitconfig` + `.githooks/`）。`pnpm install`(prepare→`.githooks/install.sh`) で `include.path` を冪等設定して有効化する。lefthook/husky は使わない。
+  - pre-commit: staged ファイルに Biome（`.githooks/pre-commit`、依存未導入時はスキップ）。pre-push: `pnpm typecheck`。
+  - **git >= 2.55 が前提**（未満ではフックはスキップされる）。
+- CI でも `pnpm check` / `pnpm typecheck` / `pnpm test` を通すこと。

@@ -1,0 +1,16 @@
+#!/bin/sh
+# pre-commit: staged の対象ファイルに Biome を当て、修正分を再 stage する。
+# git 2.55+ の config ベース hooks（.githooks.gitconfig）から実行される。
+set -eu
+
+# 依存未導入（pnpm install 前）ならスキップ。フックでコミットを止めない。
+if [ ! -x node_modules/.bin/biome ]; then
+	echo "[pre-commit] biome 未インストールのためスキップ（pnpm install 後に有効化）。" >&2
+	exit 0
+fi
+
+files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(jsx?|tsx?|jsonc?)$' || true)
+[ -z "$files" ] && exit 0
+
+printf '%s\n' "$files" | xargs pnpm biome check --write --no-errors-on-unmatched
+printf '%s\n' "$files" | xargs git add

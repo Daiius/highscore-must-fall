@@ -1,0 +1,31 @@
+{
+  "name": "highscore-must-fall",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Utopia Must Fall のプレイ結果を記録・分析するアプリ",
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "docker compose watch",
+    "down": "docker compose down",
+    "dev:web": "pnpm --filter web dev",
+    "dev:server": "pnpm --filter server dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "test": "vitest run",
+    "db:migrate": "pnpm --filter database migrate",
+    "db:seed": "pnpm --filter database seed",
+    "prepare": "sh .githooks/install.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

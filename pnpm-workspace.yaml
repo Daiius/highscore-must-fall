@@ -1,0 +1,50 @@
+packages:
+  - "packages/*"
+
+# 共通依存はここでバージョンを一元管理し、各 package.json では "catalog:" で参照する。
+# （Q17: pnpm catalog 採用）
+catalog:
+  # --- 言語 / 型 ---
+  typescript: ^5.9.3
+  "@types/node": ^24.12.4
+  tsx: ^4.22.3
+
+  # --- 検証 / スキーマ ---
+  zod: ^4.4.2
+
+  # --- API (server) ---
+  hono: ^4.12.15
+  "@hono/node-server": ^2.0.3
+  "@hono/zod-validator": ^0.8.0
+  better-auth: ^1.6.11
+
+  # --- DB (database) ---
+  # ※ Drizzle は「最新 RC を積極採用」方針（Q17 例外）。exact pin で minimumReleaseAge を実質回避。
+  drizzle-orm: 1.0.0-rc.3
+  drizzle-kit: 1.0.0-rc.3
+  drizzle-zod: ^0.8.3
+  mysql2: ^3.22.3
+
+  # --- Front (web) ---
+  react: ^19.2.5
+  react-dom: ^19.2.5
+  "@types/react": ^19.2.0
+  "@types/react-dom": ^19.2.0
+  "@tanstack/react-router": ^1.168.24
+  vite: ^8.0.10
+  "@vitejs/plugin-react": ^5.0.0
+  tailwindcss: ^4.1.0
+  "@tailwindcss/vite": ^4.1.0
+
+  # --- テスト ---
+  vitest: ^3.0.0
+
+# サプライチェーン対策（Q17）: 公開から 3 日(4320 分)未満の新バージョンは採用しない。
+# 公開直後に差し込まれる悪意あるリリースを踏みにくくする。
+# 最新を即追従したい依存（Drizzle RC 等）は catalog で exact pin して例外化する。
+minimumReleaseAge: 4320
+
+# postinstall ビルドを許可する依存（明示したものだけ走らせる）
+onlyBuiltDependencies:
+  - esbuild
+  - "@tailwindcss/oxide"
