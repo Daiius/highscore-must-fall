@@ -21,6 +21,9 @@
 ## カタログ
 - `upgrade_catalog` / `reward_catalog`: 正規キー・表示名・`unverified` フラグ・エイリアス。漸進成長。
 - 初期 seed = サンプル由来のみ（upgrade 16種 / reward 13種）。リロール名（DIGITIZE CONSCIOUSNESS 等）は **upgrade に入れない**。
+- **種別 `kind`**（`upgrade_catalog` のみ）: `contract`（既定） / `opportunity_upgrade`(OU)。OU はラン跨ぎ恒久解禁のメタ進行だが、UPGRADE HISTORY 上は通常アップグレードと同様に色付きで載る（例 `CONTEXT SWITCH`）。**記録は通常アップグレードと同じ**（`entry_type` に第3種は足さない）。`kind` は `unverified` 同様、後から人手で付与/検証する「一応後から区別できる」程度の属性。
+- **`reward_catalog` は run 内 reward（ゲーム内 "performance bonus" = `apocalypse_bonus` の内訳）のプール**。**Steam 実績(31個)とは別系統**（名前が一部重複するだけ。実績 `Schadenfreude` の定義が両レイヤーの別物性を裏付ける）。**Steam 実績名を seed / カタログに混入させない**。プールは run スクショ投入で unverified 自動登録して育てる。
+- **リロール(Citizen Proposals)は手書きの有限固定プール**（CHANGELOG が個数を数えて手動追加）だが、**カタログには登録しない**（`entry_type=reroll` で位置・回数のみ集計、フレーバーは任意で verbatim 保存）。完全な原文名リストは Web に無く、スクショが唯一の一次情報。
 
 ## パフォーマンス
 - 規模感: 通常1ユーザー内・最大 ~1万 run。**事前集計テーブルは作らない**（素のクエリ→実測で遅ければ導入）。
