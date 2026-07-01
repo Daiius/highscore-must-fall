@@ -41,9 +41,34 @@ export function checkApocalypseBonus(record: RunRecord): ValidationIssue[] {
   ]
 }
 
+/**
+ * upgrade_history の (week_index, order_in_week) が週内で一意であること。
+ * 重複すると「WEEK N の M 手目」が復元不能になるため error（確定不可）。
+ * ※ 欠番や配列順との一致までは要求しない（一意性のみで取得順は復元できる）。
+ */
+export function checkOrderInWeekUniqueness(record: RunRecord): ValidationIssue[] {
+  const firstIndexByPosition = new Map<string, number>()
+  const issues: ValidationIssue[] = []
+  record.upgrade_history.forEach((entry, index) => {
+    const key = `${entry.week_index}:${entry.order_in_week}`
+    const firstIndex = firstIndexByPosition.get(key)
+    if (firstIndex === undefined) {
+      firstIndexByPosition.set(key, index)
+      return
+    }
+    issues.push({
+      level: 'error',
+      code: 'duplicate_order_in_week',
+      message: `WEEK ${entry.week_index} の週内位置 ${entry.order_in_week} が重複しています（entry #${firstIndex} と #${index}）`,
+      path: ['upgrade_history', index, 'order_in_week'],
+    })
+  })
+  return issues
+}
+
 /** 構文検証を通ったレコードに対する全ドメイン整合チェック。 */
 export function runConsistencyChecks(record: RunRecord): ValidationIssue[] {
-  return [...checkApocalypseBonus(record)]
+  return [...checkApocalypseBonus(record), ...checkOrderInWeekUniqueness(record)]
 }
 
 /**

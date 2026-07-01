@@ -40,6 +40,42 @@ describe('validateRunRecord', () => {
     expect(issue?.path).toEqual(['result', 'apocalypse_bonus'])
   })
 
+  it('週内位置の重複は error（確定不可・該当 entry を path で指す）', () => {
+    const input = sampleRun()
+    const dup = {
+      ...input,
+      upgrade_history: [
+        { entry_type: 'upgrade' as const, week_index: 1, order_in_week: 1, name: 'ARC FLAIL' },
+        {
+          entry_type: 'upgrade' as const,
+          week_index: 1,
+          order_in_week: 1,
+          name: 'PLASMA PHYSICS LAB',
+        },
+      ],
+    }
+    const result = validateRunRecord(dup)
+
+    expect(result.ok).toBe(false)
+    expect(result.record).toBeDefined() // 構造は正しいのでレビュー表示は可能
+    const issue = result.issues.find((i) => i.code === 'duplicate_order_in_week')
+    expect(issue?.level).toBe('error')
+    expect(issue?.path).toEqual(['upgrade_history', 1, 'order_in_week'])
+  })
+
+  it('別週なら同じ order_in_week でも通る', () => {
+    const input = sampleRun()
+    const ok = {
+      ...input,
+      upgrade_history: [
+        { entry_type: 'upgrade' as const, week_index: 1, order_in_week: 1, name: 'ARC FLAIL' },
+        { entry_type: 'upgrade' as const, week_index: 2, order_in_week: 1, name: 'EXTENDED FLAIL' },
+      ],
+    }
+    const result = validateRunRecord(ok)
+    expect(result.issues.some((i) => i.code === 'duplicate_order_in_week')).toBe(false)
+  })
+
   it('構文 error では ok=false・record を返さない', () => {
     const input = sampleRun()
     const broken = { ...input, result: { ...input.result, final_score: -1 } }
