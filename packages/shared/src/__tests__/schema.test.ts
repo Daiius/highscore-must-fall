@@ -34,6 +34,16 @@ describe('RunRecordSchema', () => {
     const bad = { ...input, result: { ...input.result, days_survived: 1.5 } }
     expect(RunRecordSchema.safeParse(bad).success).toBe(false)
   })
+
+  it('現行と異なる schema_version は error（別版は migrateToCurrent 経由）', () => {
+    const bad = { ...sampleRun(), schema_version: '9.9.9' }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('現行 schema_version の明示指定は通る', () => {
+    const ok = { ...sampleRun(), schema_version: SCHEMA_VERSION }
+    expect(RunRecordSchema.safeParse(ok).success).toBe(true)
+  })
 })
 
 describe('UpgradeHistoryEntrySchema', () => {
@@ -52,6 +62,16 @@ describe('UpgradeHistoryEntrySchema', () => {
       order_in_week: 1,
     })
     expect(missingName.success).toBe(false)
+  })
+
+  it('正規化後に空になる name（制御文字のみ等）は error', () => {
+    const bad = UpgradeHistoryEntrySchema.safeParse({
+      entry_type: 'upgrade',
+      week_index: 1,
+      order_in_week: 1,
+      name: String.fromCharCode(1, 2, 3), // trim/min(1) は通るが normalize で空になる
+    })
+    expect(bad.success).toBe(false)
   })
 
   it('reroll は name 無しで通り、flavor_text は任意', () => {

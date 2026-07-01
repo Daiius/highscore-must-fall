@@ -3,12 +3,23 @@
 // ドメイン事実: prd/01-game-domain.md / 構造: prd/03-data-model.md §1
 
 import { z } from 'zod'
+import { normalizeName } from './normalize'
 import { SCHEMA_VERSION } from './version'
 
 /** 結果指標・reward の count/points 用。負値・非整数は error。 */
 const nonNegativeInt = z.int().min(0)
 /** 週番号・週内順など 1 以上の位置。 */
 const positiveInt = z.int().min(1)
+
+/**
+ * catalog 名寄せ対象の名前（upgrade / reward）。
+ * 正規化後に空になる名前（制御文字のみ等）は空の canonical_key を生むため error。
+ */
+const catalogName = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((s) => normalizeName(s).length > 0, { message: '正規化後に空になる名前は使えません' })
 
 /** 履歴エントリの種別。第3種は存在しない（prd/01 §3.1）。 */
 export const ENTRY_TYPES = ['upgrade', 'reroll'] as const
@@ -36,7 +47,7 @@ export const UpgradeHistoryEntrySchema = z.discriminatedUnion('entry_type', [
     entry_type: z.literal('upgrade'),
     week_index: positiveInt,
     order_in_week: positiveInt,
-    name: z.string().trim().min(1, 'upgrade には name が必須'),
+    name: catalogName, // upgrade には name 必須（catalog 名寄せ対象）
   }),
   z.object({
     entry_type: z.literal('reroll'),
@@ -48,14 +59,17 @@ export const UpgradeHistoryEntrySchema = z.discriminatedUnion('entry_type', [
 
 /** REWARD LEDGER の 1 行（name / count 発生回数 / points 合計）。 */
 export const RewardEntrySchema = z.object({
-  name: z.string().trim().min(1),
+  name: catalogName,
   count: nonNegativeInt,
   points: nonNegativeInt,
 })
 
-/** 1 run を表す正規レコード。全投入ルートがこれに収束する。 */
+/**
+ * 1 run を表す正規レコード。全投入ルートがこれに収束する。
+ * schema_version は現行版に固定。別版の入力は先に migrateToCurrent() で現行へ移してから通す。
+ */
 export const RunRecordSchema = z.object({
-  schema_version: z.string().default(SCHEMA_VERSION),
+  schema_version: z.literal(SCHEMA_VERSION).default(SCHEMA_VERSION),
   game: z.string().default('UTOPIA MUST FALL'),
   played_at: z.iso.datetime({ offset: true }).optional(), // 省略時はサーバが投入時刻を補完
   result: ResultSchema,

@@ -12,7 +12,8 @@ export const RUN_RECORD_JSON_SCHEMA_ID = `utopia-must-fall/run-record/${SCHEMA_V
 /**
  * RunRecord の JSON Schema を導出する。
  * io='input': ユーザー/LLM が「産出すべき」形（default 付き schema_version・game は任意）。
+ * 配布・MCP 利用時にスキーマ自身から版を識別できるよう `$id` を付与する。
  */
 export function runRecordJsonSchema() {
-  return z.toJSONSchema(RunRecordSchema, { io: 'input' })
+  return { ...z.toJSONSchema(RunRecordSchema, { io: 'input' }), $id: RUN_RECORD_JSON_SCHEMA_ID }
 }

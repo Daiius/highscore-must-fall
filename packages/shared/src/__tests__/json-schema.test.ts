@@ -20,7 +20,9 @@ describe('runRecordJsonSchema', () => {
     expect(required).toContain('result')
   })
 
-  it('$id は現行 schema_version を含む', () => {
+  it('生成物に $id が付与され、現行 schema_version を含む', () => {
+    const schema = runRecordJsonSchema() as { $id?: string }
+    expect(schema.$id).toBe(RUN_RECORD_JSON_SCHEMA_ID)
     expect(RUN_RECORD_JSON_SCHEMA_ID).toContain(SCHEMA_VERSION)
   })
 })
