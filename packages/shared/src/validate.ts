@@ -44,7 +44,7 @@ export function checkApocalypseBonus(record: RunRecord): ValidationIssue[] {
 /**
  * upgrade_history の (week_index, order_in_week) が週内で一意であること。
  * 重複すると「WEEK N の M 手目」が復元不能になるため error（確定不可）。
- * ※ 欠番や配列順との一致までは要求しない（一意性のみで取得順は復元できる）。
+ * ※ 欠番までは要求しない（部分ドラフトでは欠番が正当。prd/04）。
  */
 export function checkOrderInWeekUniqueness(record: RunRecord): ValidationIssue[] {
   const firstIndexByPosition = new Map<string, number>()
@@ -66,9 +66,46 @@ export function checkOrderInWeekUniqueness(record: RunRecord): ValidationIssue[]
   return issues
 }
 
+/** (week_index, order_in_week) の辞書順比較。 */
+function comparePosition(
+  a: { week_index: number; order_in_week: number },
+  b: { week_index: number; order_in_week: number },
+): number {
+  return a.week_index !== b.week_index
+    ? a.week_index - b.week_index
+    : a.order_in_week - b.order_in_week
+}
+
+/**
+ * upgrade_history の配列順が (week_index, order_in_week) 昇順と一致すること。
+ * 配列順と order_in_week は同じ「取得順」の二重表現であり、食い違うと
+ * 「配列で読む」処理と「order_in_week で並べる」処理で結果が変わる（prd/01 §3・prd/03 §1）。
+ * 逆順（配列順 > 位置順）を error にする。等値の重複は上の一意性チェックが担当。
+ */
+export function checkUpgradeHistoryOrder(record: RunRecord): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  let previous: { week_index: number; order_in_week: number } | undefined
+  record.upgrade_history.forEach((entry, index) => {
+    if (previous && comparePosition(previous, entry) > 0) {
+      issues.push({
+        level: 'error',
+        code: 'upgrade_history_out_of_order',
+        message: `upgrade_history の配列順が (week_index, order_in_week) 昇順と一致しません（entry #${index - 1} → #${index}）`,
+        path: ['upgrade_history', index],
+      })
+    }
+    previous = { week_index: entry.week_index, order_in_week: entry.order_in_week }
+  })
+  return issues
+}
+
 /** 構文検証を通ったレコードに対する全ドメイン整合チェック。 */
 export function runConsistencyChecks(record: RunRecord): ValidationIssue[] {
-  return [...checkApocalypseBonus(record), ...checkOrderInWeekUniqueness(record)]
+  return [
+    ...checkApocalypseBonus(record),
+    ...checkOrderInWeekUniqueness(record),
+    ...checkUpgradeHistoryOrder(record),
+  ]
 }
 
 /**

@@ -76,6 +76,47 @@ describe('validateRunRecord', () => {
     expect(result.issues.some((i) => i.code === 'duplicate_order_in_week')).toBe(false)
   })
 
+  it('配列順が (week_index, order_in_week) 昇順と食い違うと error', () => {
+    const input = sampleRun()
+    const outOfOrder = {
+      ...input,
+      upgrade_history: [
+        {
+          entry_type: 'upgrade' as const,
+          week_index: 1,
+          order_in_week: 2,
+          name: 'PLASMA PHYSICS LAB',
+        },
+        { entry_type: 'upgrade' as const, week_index: 1, order_in_week: 1, name: 'ARC FLAIL' },
+      ],
+    }
+    const result = validateRunRecord(outOfOrder)
+
+    expect(result.ok).toBe(false)
+    const issue = result.issues.find((i) => i.code === 'upgrade_history_out_of_order')
+    expect(issue?.level).toBe('error')
+    expect(issue?.path).toEqual(['upgrade_history', 1])
+  })
+
+  it('欠番（1,3 のように飛ぶ）は許容する（部分ドラフト）', () => {
+    const input = sampleRun()
+    const gapped = {
+      ...input,
+      upgrade_history: [
+        { entry_type: 'upgrade' as const, week_index: 1, order_in_week: 1, name: 'ARC FLAIL' },
+        {
+          entry_type: 'upgrade' as const,
+          week_index: 1,
+          order_in_week: 3,
+          name: 'PLASMA PHYSICS LAB',
+        },
+      ],
+    }
+    const result = validateRunRecord(gapped)
+    expect(result.issues.some((i) => i.code === 'upgrade_history_out_of_order')).toBe(false)
+    expect(result.ok).toBe(true)
+  })
+
   it('構文 error では ok=false・record を返さない', () => {
     const input = sampleRun()
     const broken = { ...input, result: { ...input.result, final_score: -1 } }
