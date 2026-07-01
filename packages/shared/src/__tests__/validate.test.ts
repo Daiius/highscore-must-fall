@@ -10,6 +10,22 @@ describe('validateRunRecord', () => {
     expect(result.record).toBeDefined()
   })
 
+  it('返す正規レコードは upgrade / reward 名が正規形に確定している', () => {
+    const input = sampleRun()
+    const messy = {
+      ...input,
+      upgrade_history: [
+        { entry_type: 'upgrade' as const, week_index: 1, order_in_week: 1, name: ' arc  flail ' },
+      ],
+      reward_ledger: [{ name: 'chef’s  kiss', count: 7, points: 1208 }],
+    }
+    const result = validateRunRecord(messy)
+    expect(result.ok).toBe(true)
+    const [entry] = result.record?.upgrade_history ?? []
+    expect(entry?.entry_type === 'upgrade' && entry.name).toBe('ARC FLAIL')
+    expect(result.record?.reward_ledger[0]?.name).toBe("CHEF'S KISS")
+  })
+
   it('apocalypse_bonus と reward 合計の不一致は warning（確定は可能）', () => {
     const input = sampleRun()
     const mismatch = { ...input, result: { ...input.result, apocalypse_bonus: 9999 } }

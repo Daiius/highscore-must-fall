@@ -69,7 +69,38 @@ describe('UpgradeHistoryEntrySchema', () => {
       entry_type: 'upgrade',
       week_index: 1,
       order_in_week: 1,
-      name: String.fromCharCode(1, 2, 3), // trim/min(1) は通るが normalize で空になる
+      name: String.fromCharCode(1, 2, 3), // min(1) は通るが normalize で空になる
+    })
+    expect(bad.success).toBe(false)
+  })
+
+  it('パース結果の name は正規形に確定する（contract で正規化を保証）', () => {
+    const parsed = UpgradeHistoryEntrySchema.parse({
+      entry_type: 'upgrade',
+      week_index: 1,
+      order_in_week: 1,
+      name: '  chef’s   kiss ',
+    })
+    expect(parsed.entry_type === 'upgrade' && parsed.name).toBe("CHEF'S KISS")
+  })
+
+  it('reroll の flavor_text は verbatim（前後空白を保持・変換しない）', () => {
+    const raw = '  welcoming ceremony  '
+    const parsed = UpgradeHistoryEntrySchema.parse({
+      entry_type: 'reroll',
+      week_index: 2,
+      order_in_week: 5,
+      flavor_text: raw,
+    })
+    expect(parsed.entry_type === 'reroll' && parsed.flavor_text).toBe(raw)
+  })
+
+  it('flavor_text が空白のみなら error', () => {
+    const bad = UpgradeHistoryEntrySchema.safeParse({
+      entry_type: 'reroll',
+      week_index: 2,
+      order_in_week: 5,
+      flavor_text: '   ',
     })
     expect(bad.success).toBe(false)
   })

@@ -13,13 +13,15 @@ const positiveInt = z.int().min(1)
 
 /**
  * catalog 名寄せ対象の名前（upgrade / reward）。
+ * 正規レコードは正規形で確定させる（contract レベルで正規化を保証し、保存側の
+ * 正規化忘れによる別カタログ登録を防ぐ）。原文は raw_payload が温存する。
  * 正規化後に空になる名前（制御文字のみ等）は空の canonical_key を生むため error。
+ * → .claude/rules/schema-and-contract.md §名寄せ / prd/03 §1・§3.5
  */
 const catalogName = z
   .string()
-  .trim()
-  .min(1)
-  .refine((s) => normalizeName(s).length > 0, { message: '正規化後に空になる名前は使えません' })
+  .transform((s) => normalizeName(s))
+  .refine((s) => s.length > 0, { message: '正規化後に空になる名前は使えません' })
 
 /** 履歴エントリの種別。第3種は存在しない（prd/01 §3.1）。 */
 export const ENTRY_TYPES = ['upgrade', 'reroll'] as const
@@ -53,7 +55,11 @@ export const UpgradeHistoryEntrySchema = z.discriminatedUnion('entry_type', [
     entry_type: z.literal('reroll'),
     week_index: positiveInt,
     order_in_week: positiveInt,
-    flavor_text: z.string().trim().min(1).optional(),
+    // verbatim 保存（証跡・集計対象外）。前後空白も保持し、変換しない。空白のみは拒否。
+    flavor_text: z
+      .string()
+      .refine((v) => v.trim().length > 0, { message: 'flavor_text が空白のみです' })
+      .optional(),
   }),
 ])
 
