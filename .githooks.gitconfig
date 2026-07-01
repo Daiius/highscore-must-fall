@@ -5,4 +5,4 @@
 	command = ./.githooks/pre-commit
 [hook "typecheck"]
 	event = pre-push
-	command = pnpm -s typecheck
+	command = ./.githooks/pre-push

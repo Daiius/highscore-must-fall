@@ -12,5 +12,9 @@ fi
 files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(jsx?|tsx?|jsonc?)$' || true)
 [ -z "$files" ] && exit 0
 
-printf '%s\n' "$files" | xargs pnpm biome check --write --no-errors-on-unmatched
+echo "[pre-commit] biome check --write を実行します..." >&2
+if ! printf '%s\n' "$files" | xargs pnpm biome check --write --no-errors-on-unmatched; then
+	echo "[pre-commit] biome check が失敗しました。上記の指摘を修正してから再度コミットしてください。" >&2
+	exit 1
+fi
 printf '%s\n' "$files" | xargs git add

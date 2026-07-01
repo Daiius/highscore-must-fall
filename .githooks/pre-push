@@ -1,0 +1,10 @@
+#!/bin/sh
+# pre-push: git が渡す引数(<remote-name> <remote-url>)を無視して typecheck を実行する。
+# git 2.55+ の config ベース hooks（.githooks.gitconfig）から実行される。
+set -eu
+
+echo "[pre-push] pnpm typecheck を実行します..." >&2
+if ! pnpm -s typecheck; then
+	echo "[pre-push] typecheck が失敗しました。push を中止します（手動確認: pnpm typecheck）。" >&2
+	exit 1
+fi
