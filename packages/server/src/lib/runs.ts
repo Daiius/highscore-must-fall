@@ -1,0 +1,257 @@
+// run 保存サービス（ingestion 下流の「確定保存 API」本体）。
+// 検証済みの正規レコード（shared の RunRecord）を run / run_payload / upgrade_entry /
+// reward_entry へ 1 トランザクションで書き込み、未知の upgrade/reward 名は unverified で
+// カタログに自動登録する（prd/03 §3・§5・prd/04 §3.6）。
+//
+//   - owner_id はセッション由来（呼び出し側が保証）。子テーブルは run.owner_id と一致させ、
+//     (run_id, owner_id) 複合 FK による所有権強制に載せる。
+//   - catalog 名寄せは正規形（canonical_key）一致 → alias → 無ければ unverified 自動登録の順。
+//     RunRecord の name は shared の catalogName で正規化済みなのでそのまま key に使える。
+
+import { randomUUID } from 'node:crypto'
+import {
+  catalogAlias,
+  db,
+  rewardCatalog,
+  rewardEntry,
+  run,
+  runPayload,
+  upgradeCatalog,
+  upgradeEntry,
+} from 'database'
+import { and, eq } from 'drizzle-orm'
+import type { RunRecord } from 'shared'
+
+/** MVP の投入ルート（file_import / paste のみ。他は Phase2 以降）。 */
+export type IngestSource = 'file_import' | 'paste'
+export type RunStatus = 'draft' | 'confirmed'
+
+export interface SaveRunInput {
+  record: RunRecord
+  ownerId: string
+  status: RunStatus
+  source: IngestSource
+  /** 明示上書き（無ければ record.played_at → 投入時刻の順で解決）。 */
+  playedAt?: Date
+  llmModel?: string
+  sourceNote?: string
+}
+
+export interface SaveRunResult {
+  runId: string
+  status: RunStatus
+}
+
+/** drizzle トランザクションハンドル（db.transaction のコールバック引数型）。 */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+/**
+ * upgrade 名（正規形）を upgrade_catalog の id へ解決する。
+ * 既知（canonical_key 一致）→ 別名（catalog_alias）→ 無ければ unverified で自動登録。
+ */
+async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Promise<string> {
+  const existing = await tx
+    .select({ id: upgradeCatalog.id })
+    .from(upgradeCatalog)
+    .where(eq(upgradeCatalog.canonicalKey, key))
+    .limit(1)
+  if (existing[0]) return existing[0].id
+
+  const alias = await tx
+    .select({ id: catalogAlias.upgradeCatalogId })
+    .from(catalogAlias)
+    .where(and(eq(catalogAlias.catalogKind, 'upgrade'), eq(catalogAlias.aliasKey, key)))
+    .limit(1)
+  if (alias[0]?.id) return alias[0].id
+
+  // 原子的な insert-or-get。同一未知名を含む run が同時保存されても一意制約違反で落とさない。
+  // 競合時の set は canonical_key 自身への no-op（既存の display_name/first_seen を壊さない）。
+  await tx
+    .insert(upgradeCatalog)
+    .values({
+      id: randomUUID(),
+      canonicalKey: key,
+      displayName: key, // 正規形を表示にもそのまま使う（別の表示名を持たない）。
+      verified: false, // unverified 自動登録。人手 verify/マージで育てる。
+      firstSeenRunId: runId,
+    })
+    .onDuplicateKeyUpdate({ set: { canonicalKey: key } })
+  // 再取得はロック読み取り（FOR UPDATE）。REPEATABLE READ の非ロック読みはトランザクション開始時
+  // スナップショットを見るため、同時保存で他トランザクションが commit した行が見えず空になり得る。
+  const inserted = await tx
+    .select({ id: upgradeCatalog.id })
+    .from(upgradeCatalog)
+    .where(eq(upgradeCatalog.canonicalKey, key))
+    .limit(1)
+    .for('update')
+  // 直前の upsert 後なので必ず存在する（無ければ FK 違反を招くため即エラー）。
+  const id = inserted[0]?.id
+  if (!id) throw new Error(`upgrade_catalog upsert failed for key: ${key}`)
+  return id
+}
+
+/** reward 名（正規形）を reward_catalog の id へ解決する（upgrade と同じ順序）。 */
+async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promise<string> {
+  const existing = await tx
+    .select({ id: rewardCatalog.id })
+    .from(rewardCatalog)
+    .where(eq(rewardCatalog.canonicalKey, key))
+    .limit(1)
+  if (existing[0]) return existing[0].id
+
+  const alias = await tx
+    .select({ id: catalogAlias.rewardCatalogId })
+    .from(catalogAlias)
+    .where(and(eq(catalogAlias.catalogKind, 'reward'), eq(catalogAlias.aliasKey, key)))
+    .limit(1)
+  if (alias[0]?.id) return alias[0].id
+
+  // 原子的な insert-or-get（upgrade 側と同じ理由・同じ形）。
+  await tx
+    .insert(rewardCatalog)
+    .values({
+      id: randomUUID(),
+      canonicalKey: key,
+      displayName: key,
+      verified: false,
+      firstSeenRunId: runId,
+    })
+    .onDuplicateKeyUpdate({ set: { canonicalKey: key } })
+  // 再取得はロック読み取り（upgrade 側と同じ理由）。
+  const inserted = await tx
+    .select({ id: rewardCatalog.id })
+    .from(rewardCatalog)
+    .where(eq(rewardCatalog.canonicalKey, key))
+    .limit(1)
+    .for('update')
+  const id = inserted[0]?.id
+  if (!id) throw new Error(`reward_catalog upsert failed for key: ${key}`)
+  return id
+}
+
+/** 事前解決したカタログ id マップから必ず存在する id を引く（欠落は実装バグなので即エラー）。 */
+function mustGet(map: Map<string, string>, key: string): string {
+  const id = map.get(key)
+  if (!id) throw new Error(`catalog id not resolved for key: ${key}`)
+  return id
+}
+
+/** InnoDB のデッドロック(1213)・ロック待ちタイムアウト(1205)は限定的に再試行する。 */
+const RETRYABLE_ERRNOS = new Set([1213, 1205])
+
+async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const errno = (e as { errno?: number }).errno
+      if (errno !== undefined && RETRYABLE_ERRNOS.has(errno)) {
+        lastErr = e // 犠牲になった側はロールバック済み。runId 再利用で再試行して問題ない。
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastErr
+}
+
+/**
+ * 検証済み RunRecord を保存する。呼び出し側は事前に shared で検証し、
+ * confirmed なら error 無しを保証していること（ここでは DB 書き込みに専念する）。
+ */
+export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
+  const { record, ownerId, status, source } = input
+  const runId = randomUUID()
+  const playedAt = input.playedAt ?? (record.played_at ? new Date(record.played_at) : new Date())
+  const rerollCount = record.upgrade_history.filter((e) => e.entry_type === 'reroll').length
+
+  // 未知カタログの upsert を run 間で決定的な順序（canonical_key 昇順・upgrade→reward）で行うために、
+  // 事前に名前を dedupe & ソートしておく。ロック取得順を全 run で揃え、逆順ロックによるデッドロックを防ぐ。
+  const upgradeKeys = [
+    ...new Set(record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : []))),
+  ].sort()
+  const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))].sort()
+
+  await withDeadlockRetry(() =>
+    db.transaction(async (tx) => {
+      // run（コア・ホット行）。カタログの firstSeenRunId FK があるため先に入れる。
+      await tx.insert(run).values({
+        id: runId,
+        ownerId,
+        game: record.game,
+        playedAt,
+        status,
+        source,
+        schemaVersion: record.schema_version,
+        daysSurvived: record.result.days_survived,
+        finalScore: record.result.final_score,
+        aliensDefeated: record.result.aliens_defeated,
+        nukesLaunched: record.result.nukes_launched,
+        apocalypseBonus: record.result.apocalypse_bonus,
+        rerollCount,
+      })
+
+      // run_payload（正規スキーマ全体を丸ごと温存）。
+      await tx.insert(runPayload).values({
+        runId,
+        ownerId,
+        rawPayload: record,
+        llmModel: input.llmModel,
+        sourceNote: input.sourceNote,
+      })
+
+      // カタログを決定的順序で解決して id マップを作る（ここでロックが確定する）。
+      const upgradeIdByKey = new Map<string, string>()
+      for (const key of upgradeKeys) {
+        upgradeIdByKey.set(key, await resolveUpgradeCatalogId(tx, key, runId))
+      }
+      const rewardIdByKey = new Map<string, string>()
+      for (const key of rewardKeys) {
+        rewardIdByKey.set(key, await resolveRewardCatalogId(tx, key, runId))
+      }
+
+      // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番。catalog id はマップ引き）。
+      let upgradeOrder = 0
+      for (const entry of record.upgrade_history) {
+        if (entry.entry_type === 'upgrade') {
+          upgradeOrder += 1
+          await tx.insert(upgradeEntry).values({
+            id: randomUUID(),
+            ownerId,
+            runId,
+            weekIndex: entry.week_index,
+            orderInWeek: entry.order_in_week,
+            entryType: 'upgrade',
+            upgradeCatalogId: mustGet(upgradeIdByKey, entry.name),
+            upgradeOrder,
+          })
+        } else {
+          await tx.insert(upgradeEntry).values({
+            id: randomUUID(),
+            ownerId,
+            runId,
+            weekIndex: entry.week_index,
+            orderInWeek: entry.order_in_week,
+            entryType: 'reroll',
+            flavorText: entry.flavor_text,
+          })
+        }
+      }
+
+      // reward_entry。
+      for (const r of record.reward_ledger) {
+        await tx.insert(rewardEntry).values({
+          id: randomUUID(),
+          ownerId,
+          runId,
+          rewardCatalogId: mustGet(rewardIdByKey, r.name),
+          count: r.count,
+          points: r.points,
+        })
+      }
+    }),
+  )
+
+  return { runId, status }
+}

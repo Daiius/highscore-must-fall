@@ -44,6 +44,45 @@ describe('RunRecordSchema', () => {
     const ok = { ...sampleRun(), schema_version: SCHEMA_VERSION }
     expect(RunRecordSchema.safeParse(ok).success).toBe(true)
   })
+
+  it('INT 範囲を超えるコア指標は error（DB の INT 格納範囲に合わせる）', () => {
+    const input = sampleRun()
+    const bad = { ...input, result: { ...input.result, final_score: 2_147_483_648 } }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+    const ok = { ...input, result: { ...input.result, final_score: 2_147_483_647 } }
+    expect(RunRecordSchema.safeParse(ok).success).toBe(true)
+  })
+
+  it('191 文字を超える game は error（varchar(191) に合わせる）', () => {
+    const bad = { ...sampleRun(), game: 'A'.repeat(192) }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('正規化後 191 文字を超える upgrade 名は error', () => {
+    const input = sampleRun()
+    const bad = {
+      ...input,
+      upgrade_history: [
+        { entry_type: 'upgrade', week_index: 1, order_in_week: 1, name: 'A'.repeat(192) },
+      ],
+    }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('played_at は ISO(offset) を受理し、MySQL DATETIME 範囲外は error', () => {
+    const input = sampleRun()
+    expect(
+      RunRecordSchema.safeParse({ ...input, played_at: '2026-07-03T02:00:00+09:00' }).success,
+    ).toBe(true)
+    // 西暦 1000 未満・9999 超は保存不可。
+    expect(RunRecordSchema.safeParse({ ...input, played_at: '0999-12-31T23:59:59Z' }).success).toBe(
+      false,
+    )
+    // offset 適用で UTC が 10000 年になるケースも弾く。
+    expect(
+      RunRecordSchema.safeParse({ ...input, played_at: '9999-12-31T23:59:59-05:00' }).success,
+    ).toBe(false)
+  })
 })
 
 describe('UpgradeHistoryEntrySchema', () => {
@@ -93,6 +132,16 @@ describe('UpgradeHistoryEntrySchema', () => {
       flavor_text: raw,
     })
     expect(parsed.entry_type === 'reroll' && parsed.flavor_text).toBe(raw)
+  })
+
+  it('flavor_text が MySQL TEXT 上限(65535 バイト)を超えると error', () => {
+    const bad = UpgradeHistoryEntrySchema.safeParse({
+      entry_type: 'reroll',
+      week_index: 2,
+      order_in_week: 1,
+      flavor_text: 'x'.repeat(65_536),
+    })
+    expect(bad.success).toBe(false)
   })
 
   it('flavor_text が空白のみなら error', () => {
