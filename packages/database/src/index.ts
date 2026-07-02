@@ -20,6 +20,10 @@ export const client: Pool = createPool({
   user: process.env.MYSQL_USER ?? 'root',
   password: process.env.MYSQL_PASSWORD ?? '',
   database: process.env.MYSQL_DATABASE ?? 'highscore_must_fall',
+  // Date ⇄ DATETIME のシリアライズを UTC 固定にする。プロセス TZ（compose では Asia/Tokyo）に
+  // 依存すると、shared の DATETIME 範囲検証（UTC 年基準）と保存時刻帯がズレて 500 になり得る。
+  // UTC で一貫させることで検証と保存を一致させ、TZ 非依存で読み書きできる。
+  timezone: 'Z',
 })
 
 export const db = drizzle({ client, relations })

@@ -8,17 +8,18 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { runRecordJsonSchema } from 'shared'
 import { z } from 'zod'
-import { type AppEnv, requireUser } from '../lib/context'
+import { type AppEnv, limitIngestBody, requireUser } from '../lib/context'
 import { ingestSubmission } from '../lib/ingest'
 
 const validateBody = z.object({
-  text: z.string(),
+  // 本文全体は bodyLimit で 2MB に制限済み。text 単体もさらに保守的に上限を置く。
+  text: z.string().max(1_000_000),
   format: z.enum(['json', 'yaml', 'auto']).default('auto'),
 })
 
 export const ingestRoute = new Hono<AppEnv>()
   // 検証は認証済みユーザーのみ（投入と同じ境界に揃える）。
-  .post('/validate', requireUser, zValidator('json', validateBody), (c) => {
+  .post('/validate', limitIngestBody, requireUser, zValidator('json', validateBody), (c) => {
     const { text, format } = c.req.valid('json')
     return c.json(ingestSubmission(text, format))
   })

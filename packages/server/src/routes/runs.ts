@@ -11,23 +11,33 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { StoredDatetimeSchema } from 'shared'
 import { z } from 'zod'
-import { type AppEnv, requireUser } from '../lib/context'
+import { type AppEnv, limitIngestBody, requireUser } from '../lib/context'
 import { ingestSubmission } from '../lib/ingest'
 import { saveRun } from '../lib/runs'
 
+/** run_payload.source_note は MySQL TEXT（最大 65535 バイト）。UTF-8 バイト長で制限する。 */
+const TEXT_MAX_BYTES = 65535
+
 const createBody = z.object({
-  text: z.string(),
+  // 本文全体は bodyLimit で 2MB に制限済み。text 単体もさらに保守的に上限を置く。
+  text: z.string().max(1_000_000),
   format: z.enum(['json', 'yaml', 'auto']).default('auto'),
   status: z.enum(['draft', 'confirmed']),
   source: z.enum(['file_import', 'paste']).default('paste'),
   /** 任意の投入日時上書き（ISO8601, offset 付き・MySQL DATETIME 範囲内）。無ければ record.played_at → 投入時刻。 */
   playedAt: StoredDatetimeSchema.optional(),
   llmModel: z.string().max(128).optional(),
-  sourceNote: z.string().optional(),
+  sourceNote: z
+    .string()
+    .refine((s) => Buffer.byteLength(s, 'utf8') <= TEXT_MAX_BYTES, {
+      message: `source_note が長すぎます（UTF-8 で ${TEXT_MAX_BYTES} バイト以内）`,
+    })
+    .optional(),
 })
 
 export const runsRoute = new Hono<AppEnv>().post(
   '/',
+  limitIngestBody,
   requireUser,
   zValidator('json', createBody),
   async (c) => {
