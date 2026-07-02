@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "mysql",
-  "id": "31f55586-a9b5-4ca3-8585-d6c98188f698",
+  "id": "ab7a441b-b34a-4e16-8acb-2a926c6c38b1",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -560,7 +560,7 @@
     },
     {
       "type": "int",
-      "notNull": true,
+      "notNull": false,
       "autoIncrement": false,
       "default": null,
       "onUpdateNow": false,
@@ -574,7 +574,7 @@
     },
     {
       "type": "int",
-      "notNull": true,
+      "notNull": false,
       "autoIncrement": false,
       "default": null,
       "onUpdateNow": false,
@@ -588,7 +588,7 @@
     },
     {
       "type": "int",
-      "notNull": true,
+      "notNull": false,
       "autoIncrement": false,
       "default": null,
       "onUpdateNow": false,
@@ -602,7 +602,7 @@
     },
     {
       "type": "int",
-      "notNull": true,
+      "notNull": false,
       "autoIncrement": false,
       "default": null,
       "onUpdateNow": false,
@@ -616,7 +616,7 @@
     },
     {
       "type": "int",
-      "notNull": true,
+      "notNull": false,
       "autoIncrement": false,
       "default": null,
       "onUpdateNow": false,
@@ -1697,6 +1697,26 @@
     {
       "columns": [
         {
+          "value": "id",
+          "isExpression": false
+        },
+        {
+          "value": "owner_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "using": null,
+      "algorithm": null,
+      "lock": null,
+      "nameExplicit": true,
+      "name": "run_id_owner_uidx",
+      "entityType": "indexes",
+      "table": "run"
+    },
+    {
+      "columns": [
+        {
           "value": "run_id",
           "isExpression": false
         }
@@ -1851,36 +1871,6 @@
     },
     {
       "columns": [
-        "owner_id"
-      ],
-      "tableTo": "user",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "reward_entry_owner_id_user_id_fkey",
-      "entityType": "fks",
-      "table": "reward_entry"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "reward_entry_run_id_run_id_fkey",
-      "entityType": "fks",
-      "table": "reward_entry"
-    },
-    {
-      "columns": [
         "reward_catalog_id"
       ],
       "tableTo": "reward_catalog",
@@ -1891,6 +1881,23 @@
       "onDelete": "RESTRICT",
       "nameExplicit": false,
       "name": "reward_entry_reward_catalog_id_reward_catalog_id_fkey",
+      "entityType": "fks",
+      "table": "reward_entry"
+    },
+    {
+      "columns": [
+        "run_id",
+        "owner_id"
+      ],
+      "tableTo": "run",
+      "columnsTo": [
+        "id",
+        "owner_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": true,
+      "name": "reward_entry_run_owner_fkey",
       "entityType": "fks",
       "table": "reward_entry"
     },
@@ -1911,61 +1918,35 @@
     },
     {
       "columns": [
+        "run_id",
         "owner_id"
       ],
-      "tableTo": "user",
+      "tableTo": "run",
       "columnsTo": [
-        "id"
+        "id",
+        "owner_id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "run_image_owner_id_user_id_fkey",
+      "nameExplicit": true,
+      "name": "run_image_run_owner_fkey",
       "entityType": "fks",
       "table": "run_image"
     },
     {
       "columns": [
-        "run_id"
-      ],
-      "tableTo": "run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "run_image_run_id_run_id_fkey",
-      "entityType": "fks",
-      "table": "run_image"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "run_payload_run_id_run_id_fkey",
-      "entityType": "fks",
-      "table": "run_payload"
-    },
-    {
-      "columns": [
+        "run_id",
         "owner_id"
       ],
-      "tableTo": "user",
+      "tableTo": "run",
       "columnsTo": [
-        "id"
+        "id",
+        "owner_id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "run_payload_owner_id_user_id_fkey",
+      "nameExplicit": true,
+      "name": "run_payload_run_owner_fkey",
       "entityType": "fks",
       "table": "run_payload"
     },
@@ -1986,36 +1967,6 @@
     },
     {
       "columns": [
-        "owner_id"
-      ],
-      "tableTo": "user",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "upgrade_entry_owner_id_user_id_fkey",
-      "entityType": "fks",
-      "table": "upgrade_entry"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "upgrade_entry_run_id_run_id_fkey",
-      "entityType": "fks",
-      "table": "upgrade_entry"
-    },
-    {
-      "columns": [
         "upgrade_catalog_id"
       ],
       "tableTo": "upgrade_catalog",
@@ -2026,6 +1977,23 @@
       "onDelete": "RESTRICT",
       "nameExplicit": false,
       "name": "upgrade_entry_upgrade_catalog_id_upgrade_catalog_id_fkey",
+      "entityType": "fks",
+      "table": "upgrade_entry"
+    },
+    {
+      "columns": [
+        "run_id",
+        "owner_id"
+      ],
+      "tableTo": "run",
+      "columnsTo": [
+        "id",
+        "owner_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": true,
+      "name": "upgrade_entry_run_owner_fkey",
       "entityType": "fks",
       "table": "upgrade_entry"
     }

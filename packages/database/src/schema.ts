@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto'
 import {
   boolean,
   datetime,
+  foreignKey,
   index,
   int,
   json,
@@ -46,6 +47,12 @@ const ownerId = () =>
   varchar('owner_id', { length: 36 })
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' })
+
+// 子テーブルの owner_id。user への直接 FK は張らず、(run_id, owner_id) の複合 FK で
+// run.owner_id との一致を DB レベルで強制する（run を唯一の所有権アンカーにする）。
+// これにより「他ユーザーの run に子レコードをぶら下げる」不整合を構造的に排除する。
+// user 削除時は run の cascade（run→user）→ 複合 FK の cascade（子→run）で連鎖削除される。
+const childOwnerId = () => varchar('owner_id', { length: 36 }).notNull()
 
 // --- 認証テーブル（better-auth コアスキーマ）。@better-auth/cli generate 由来の形を統合。 ---
 // server 側 drizzleAdapter がこれらを使う。Google OAuth のためカスタムフィールドは無し（MVP）。
@@ -138,11 +145,14 @@ export const run = mysqlTable(
     source: mysqlEnum('source', RUN_SOURCES).notNull(),
     schemaVersion: varchar('schema_version', { length: 32 }).notNull(),
     // 型付きコア指標（集計・ソート用）。
-    daysSurvived: int('days_survived').notNull(),
-    finalScore: int('final_score').notNull(), // 分析の主対象
-    aliensDefeated: int('aliens_defeated').notNull(),
-    nukesLaunched: int('nukes_launched').notNull(),
-    apocalypseBonus: int('apocalypse_bonus').notNull(),
+    // draft は結果画面未取得の部分 run を許容するため nullable（prd/04 §3,§4）。
+    // confirmed への遷移時にアプリ層が shared の RunRecord 検証で全項目の充足を必須にする
+    // （DB 制約では draft/confirmed を跨ぐ NOT NULL を表現できないため。整合は prd/03 §4 と同様アプリ層）。
+    daysSurvived: int('days_survived'),
+    finalScore: int('final_score'), // 分析の主対象
+    aliensDefeated: int('aliens_defeated'),
+    nukesLaunched: int('nukes_launched'),
+    apocalypseBonus: int('apocalypse_bonus'),
     // 非正規化（高速分析用。upgrade_entry から導出可能だが冗長保持）。
     rerollCount: int('reroll_count').notNull().default(0),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -152,21 +162,32 @@ export const run = mysqlTable(
     index('run_owner_played_at_idx').on(t.ownerId, t.playedAt),
     index('run_owner_final_score_idx').on(t.ownerId, t.finalScore),
     index('run_owner_status_idx').on(t.ownerId, t.status),
+    // 子テーブルの (run_id, owner_id) 複合 FK の参照先。owner 一致を DB で強制するため必須。
+    uniqueIndex('run_id_owner_uidx').on(t.id, t.ownerId),
   ],
 )
 
 // --- run_payload（重い JSON を分離。1:1）。prd/03 §3.2。 ----------------------------
 
-export const runPayload = mysqlTable('run_payload', {
-  runId: varchar('run_id', { length: 36 })
-    .primaryKey()
-    .references(() => run.id, { onDelete: 'cascade' }),
-  ownerId: ownerId(),
-  // 正規スキーマ全体を丸ごと（未知項目温存・再処理/監査用）。
-  rawPayload: json('raw_payload').$type<RunRecord>().notNull(),
-  llmModel: varchar('llm_model', { length: 128 }),
-  sourceNote: text('source_note'),
-})
+export const runPayload = mysqlTable(
+  'run_payload',
+  {
+    runId: varchar('run_id', { length: 36 }).primaryKey(),
+    ownerId: childOwnerId(),
+    // 正規スキーマ全体を丸ごと（未知項目温存・再処理/監査用）。
+    rawPayload: json('raw_payload').$type<RunRecord>().notNull(),
+    llmModel: varchar('llm_model', { length: 128 }),
+    sourceNote: text('source_note'),
+  },
+  (t) => [
+    // (run_id, owner_id) → run(id, owner_id)。owner 一致を強制しつつ run 削除で cascade。
+    foreignKey({
+      columns: [t.runId, t.ownerId],
+      foreignColumns: [run.id, run.ownerId],
+      name: 'run_payload_run_owner_fkey',
+    }).onDelete('cascade'),
+  ],
+)
 
 // --- upgrade_entry（アップグレード/リロールの順序付きエントリ）。prd/03 §3.3。 --------
 
@@ -174,10 +195,8 @@ export const upgradeEntry = mysqlTable(
   'upgrade_entry',
   {
     id: id(),
-    ownerId: ownerId(),
-    runId: varchar('run_id', { length: 36 })
-      .notNull()
-      .references(() => run.id, { onDelete: 'cascade' }),
+    ownerId: childOwnerId(),
+    runId: varchar('run_id', { length: 36 }).notNull(),
     weekIndex: int('week_index').notNull(), // 1..
     orderInWeek: int('order_in_week').notNull(), // 週内の位置（reroll 含む）
     entryType: mysqlEnum('entry_type', ENTRY_TYPES).notNull(),
@@ -195,6 +214,12 @@ export const upgradeEntry = mysqlTable(
     index('upgrade_entry_run_idx').on(t.runId),
     index('upgrade_entry_catalog_week_idx').on(t.upgradeCatalogId, t.weekIndex),
     index('upgrade_entry_owner_catalog_idx').on(t.ownerId, t.upgradeCatalogId),
+    // (run_id, owner_id) → run(id, owner_id)。owner 一致を強制しつつ run 削除で cascade。
+    foreignKey({
+      columns: [t.runId, t.ownerId],
+      foreignColumns: [run.id, run.ownerId],
+      name: 'upgrade_entry_run_owner_fkey',
+    }).onDelete('cascade'),
   ],
 )
 
@@ -204,10 +229,8 @@ export const rewardEntry = mysqlTable(
   'reward_entry',
   {
     id: id(),
-    ownerId: ownerId(),
-    runId: varchar('run_id', { length: 36 })
-      .notNull()
-      .references(() => run.id, { onDelete: 'cascade' }),
+    ownerId: childOwnerId(),
+    runId: varchar('run_id', { length: 36 }).notNull(),
     rewardCatalogId: varchar('reward_catalog_id', { length: 36 })
       .notNull()
       .references(() => rewardCatalog.id, { onDelete: 'restrict' }),
@@ -217,6 +240,12 @@ export const rewardEntry = mysqlTable(
   (t) => [
     index('reward_entry_run_idx').on(t.runId),
     index('reward_entry_owner_catalog_idx').on(t.ownerId, t.rewardCatalogId),
+    // (run_id, owner_id) → run(id, owner_id)。owner 一致を強制しつつ run 削除で cascade。
+    foreignKey({
+      columns: [t.runId, t.ownerId],
+      foreignColumns: [run.id, run.ownerId],
+      name: 'reward_entry_run_owner_fkey',
+    }).onDelete('cascade'),
   ],
 )
 
@@ -276,10 +305,8 @@ export const runImage = mysqlTable(
   'run_image',
   {
     id: id(),
-    ownerId: ownerId(),
-    runId: varchar('run_id', { length: 36 })
-      .notNull()
-      .references(() => run.id, { onDelete: 'cascade' }),
+    ownerId: childOwnerId(),
+    runId: varchar('run_id', { length: 36 }).notNull(),
     section: mysqlEnum('section', IMAGE_SECTIONS).notNull(),
     storageKey: varchar('storage_key', { length: 255 }).notNull(), // BlobStore のキー
     contentType: varchar('content_type', { length: 64 }).notNull(), // png/jpeg/webp
@@ -291,5 +318,11 @@ export const runImage = mysqlTable(
   (t) => [
     index('run_image_run_idx').on(t.runId),
     index('run_image_owner_run_idx').on(t.ownerId, t.runId),
+    // (run_id, owner_id) → run(id, owner_id)。owner 一致を強制しつつ run 削除で cascade。
+    foreignKey({
+      columns: [t.runId, t.ownerId],
+      foreignColumns: [run.id, run.ownerId],
+      name: 'run_image_run_owner_fkey',
+    }).onDelete('cascade'),
   ],
 )
