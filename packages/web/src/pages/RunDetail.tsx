@@ -50,17 +50,23 @@ export function RunDetail() {
   useEffect(() => {
     void (async () => {
       setLoading(true)
-      const res = await client.api.runs[':id'].$get({ param: { id } })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      if (res.ok) {
-        setRun((await res.json()) as RunDetailData)
-      } else {
+      try {
+        const res = await client.api.runs[':id'].$get({ param: { id } })
+        if (res.status === 401) {
+          clearSession()
+          return
+        }
+        if (res.ok) {
+          setRun((await res.json()) as RunDetailData)
+        } else {
+          setNotFound(true)
+        }
+      } catch {
+        // 通信失敗も「見つからない」扱いにして永久ローディングを避ける。
         setNotFound(true)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })()
   }, [id, clearSession])
 

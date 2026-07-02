@@ -35,18 +35,23 @@ export function Analysis() {
   useEffect(() => {
     void (async () => {
       setLoading(true)
-      const res = await client.api.analysis.summary.$get()
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      if (!res.ok) {
-        setError('分析データの取得に失敗しました')
+      setError(null)
+      try {
+        const res = await client.api.analysis.summary.$get()
+        if (res.status === 401) {
+          clearSession()
+          return
+        }
+        if (!res.ok) {
+          setError('分析データの取得に失敗しました')
+          return
+        }
+        setSummary((await res.json()) as Summary)
+      } catch {
+        setError('分析データの取得に失敗しました。時間をおいて再読み込みしてください。')
+      } finally {
         setLoading(false)
-        return
       }
-      setSummary((await res.json()) as Summary)
-      setLoading(false)
     })()
   }, [clearSession])
 

@@ -46,6 +46,18 @@ export function Import() {
   const warnings = result?.issues.filter((i) => i.level === 'warning') ?? []
   const canSave = result?.ok === true
 
+  // 入力・フォーマットを変えたら古い検証結果を捨てる（未レビューのまま保存できないように）。
+  function changeText(v: string) {
+    setText(v)
+    setResult(null)
+    setError(null)
+  }
+  function changeFormat(v: Format) {
+    setFormat(v)
+    setResult(null)
+    setError(null)
+  }
+
   async function validate() {
     setBusy(true)
     setError(null)
@@ -115,7 +127,7 @@ export function Import() {
           <select
             id="format"
             value={format}
-            onChange={(e) => setFormat(e.target.value as Format)}
+            onChange={(e) => changeFormat(e.target.value as Format)}
             className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-200 text-sm"
           >
             <option value="auto">自動判定</option>
@@ -124,7 +136,7 @@ export function Import() {
           </select>
           <button
             type="button"
-            onClick={() => setText(EXAMPLE)}
+            onClick={() => changeText(EXAMPLE)}
             className="text-slate-400 text-xs hover:text-slate-200 hover:underline"
           >
             例を挿入
@@ -132,7 +144,7 @@ export function Import() {
         </div>
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => changeText(e.target.value)}
           rows={14}
           spellCheck={false}
           placeholder={EXAMPLE}

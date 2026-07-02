@@ -23,22 +23,30 @@ export function Runs() {
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(
     async (nextOffset: number) => {
       setLoading(true)
-      const res = await client.api.runs.$get({
-        query: { limit: String(PAGE_SIZE), offset: String(nextOffset) },
-      })
-      if (res.status === 401) {
-        clearSession()
-        return
+      setError(null)
+      try {
+        const res = await client.api.runs.$get({
+          query: { limit: String(PAGE_SIZE), offset: String(nextOffset) },
+        })
+        if (res.status === 401) {
+          clearSession()
+          return
+        }
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        const data = (await res.json()) as { runs: RunRow[]; total: number }
+        setRuns(data.runs)
+        setTotal(data.total)
+        setOffset(nextOffset)
+      } catch {
+        setError('ラン一覧の取得に失敗しました。時間をおいて再読み込みしてください。')
+      } finally {
+        setLoading(false)
       }
-      const data = (await res.json()) as { runs: RunRow[]; total: number }
-      setRuns(data.runs)
-      setTotal(data.total)
-      setOffset(nextOffset)
-      setLoading(false)
     },
     [clearSession],
   )
@@ -64,6 +72,8 @@ export function Runs() {
 
       {loading ? (
         <p className="text-slate-400">読み込み中…</p>
+      ) : error ? (
+        <p className="text-red-400 text-sm">{error}</p>
       ) : runs.length === 0 ? (
         <p className="text-slate-400 text-sm">
           まだランがありません。「インポート」から結果を登録してください。
