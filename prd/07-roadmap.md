@@ -36,11 +36,15 @@
 - **横断統計 / ランキング**: オプトイン前提・自己申告スコアの信頼性対策（[05](./05-auth-and-privacy.md) §4）。
 - データモデルに「集計利用同意フラグ」を追加。
 
-## 未確定・要確認（実装前に詰める）
+## 確定事項（旧「未確定・要確認」）
 
-- カタログの所有: **グローバル** vs owner ごと（[03](./03-data-model.md) §5 で暫定グローバル。要確認）。
-- 「1週間 = 7日」の確定（[01](./01-game-domain.md) §2 は推定）。
-- 結果指標・カタログの網羅性（サンプル外項目）。
-- catalog の正規化キー生成の具体ルール（記号・アポストロフィ `CHEF'S KISS` 等の扱い）。
-- グラフ可視化ライブラリの選定。
-- CI（GitHub Actions）の具体。
+以下は詰め終わった。残る恒常課題は「網羅性」のみ（unverified 自動登録で漸進対応）。
+
+- ✅ カタログの所有: **グローバル**で確定（2026-07-02。[03](./03-data-model.md) §5）。
+- ✅ 「1週間 = 7日」で確定（[01](./01-game-domain.md) §2: WEEK1=1〜7日 / WEEK2=8〜10日）。
+- ✅ 正規化キー生成ルール確定（ASCII フォールディング＋空白保持＋大文字化・記号保持。[.claude/rules/schema-and-contract.md](../.claude/rules/schema-and-contract.md) §名寄せ）。
+- ✅ グラフ可視化ライブラリ: **Recharts**（2026-07-03。記述分析の棒/折れ線/分布に使用）。
+- ✅ 配置/設定つき upgrade の手動メモ欄: **Phase2 送り**（[01](./01-game-domain.md) §9）。
+- ✅ 1 section 複数スクショ: **MVP は1枚固定**（[01](./01-game-domain.md) §9・[04](./04-ingestion.md) §7）。
+- ✅ CI: **GitHub Actions** で `pnpm check` / `pnpm typecheck` / `pnpm test`（本リポの `.github/workflows/ci.yml`）。
+- ⏳ **恒常課題**: 結果指標・カタログの網羅性（サンプル外項目）→ unverified 自動登録＋人手 verify で漸進対応。

@@ -1,0 +1,41 @@
+name: CI
+
+# ローカルの品質ゲート（Biome / typecheck / Vitest）を PR と main push で回す。
+# コマンドは package.json のスクリプトと一致させる（ローカルと CI で同じ実体）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一 ref の実行が重なったら古い方をキャンセル。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager フィールド（pnpm@10.x）を尊重して pnpm を用意。
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # lockfile を固定して再現性を担保（catalog の版ズレを検出）。
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome check
+        run: pnpm check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test

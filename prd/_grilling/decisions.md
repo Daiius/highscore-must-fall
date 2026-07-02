@@ -30,11 +30,11 @@
   - Front: **Vite + React 19 + TanStack Router**（router 確定）。初期 self-host、増えたら CF/Vercel 検討。
   - Style: **TailwindCSS**（特定デザインなし）。無難な仮デザイン→後でゲーム風スタイル。
   - **pnpm monorepo + docker compose watch** 開発環境（bind mount 最小）。
-- **参考実装**: `~/sources/seseraki` がほぼ理想形。
+- **参考実装**: 同一スタック（Vite+React+TanStack Router+Hono+Drizzle+MySQL+compose watch）の実働リポがほぼ理想形。
   - 構成 `packages/server`(Hono) / `packages/web`(Vite+React+TanStack Router) / `packages/worker`(背景処理)
   - compose watch: `action: sync`/`sync+restart`、`pnpm-lock.yaml` 変更時のみ `rebuild`、DB は named volume のみ。
   - `worker` パッケージ → 将来の「全自動スクショ分析(サーバ側LLM)」のジョブ処理先に自然に載る。
-  - 補足参考: `sekirei-todo`(Drizzle 1.0.0-rc.1 + pnpm `catalog:`)、`girls-side-analysis`(catalog + `minimumReleaseAge` サプライチェーン対策)。
+  - 補足参考: 同一スタックの実働リポ（Drizzle 1.0.0-rc + pnpm `catalog:` + `minimumReleaseAge` サプライチェーン対策）。
   - → **後で確認**: pnpm `catalog:` 採用？ `minimumReleaseAge` 採用？
 
 ### データモデル
@@ -133,7 +133,7 @@ reward_ledger:          # name / count(発生回数) / points(合計)
   - 段階1インポートは Web セッション認証で防御。Phase 2 の API/MCP ルートは**ユーザー単位トークン(API キー)** が必要（better-auth で発行）。
   - 公開配置 → HTTPS・シークレット管理・CORS・(将来)レート制限が現実の論点に。
   - 引き続き Phase 2: 課金、全自動 LLM(サーバ側)。
-  - 参考: girls-side-analysis が better-auth 採用。
+  - 参考: 同一スタックの実働リポが better-auth 採用。
 
 ### 認証の具体
 - **Q15b**:

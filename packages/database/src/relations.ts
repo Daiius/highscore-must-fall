@@ -1,5 +1,5 @@
 // Drizzle 1.0 のリレーション定義（defineRelations）。relational query 用。
-// 参考（drizzle-orm 1.0 rc の実装例）: girls-side-analysis / seseraki。
+// 参考: drizzle-orm 1.0 rc の実装例（同一スタックの実働リポ）。
 // FK 自体は schema.ts の .references() が張る。ここは query API 用の関係宣言。
 
 import { defineRelations } from 'drizzle-orm'
