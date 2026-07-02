@@ -4,23 +4,19 @@
 //   - /api/auth/* は better-auth ハンドラに委譲。
 //   - セッションをコンテキストに載せるミドルウェア（c.get('user') / c.get('session')）。
 //   - dev ログインバイパス /api/dev/login（本番では未登録）。
+//   - ingestion（検証・分析キット配布）と run 保存を route モジュールとして mount。
 //   - 動作確認用の /api/health / /api/me。
 //
-// 後続 PR で ingestion / run / catalog / 画像配信のルートをこの route チェーンに足していく。
+// 後続 PR で run 一覧/詳細・catalog・画像配信のルートをこの route チェーンに足していく。
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth, isDevLoginEnabled, webOrigin } from './lib/auth'
+import type { AppEnv } from './lib/context'
+import { ingestRoute } from './routes/ingest'
+import { runsRoute } from './routes/runs'
 
-type AuthUser = typeof auth.$Infer.Session.user
-type AuthSession = typeof auth.$Infer.Session.session
-
-type Variables = {
-  user: AuthUser | null
-  session: AuthSession | null
-}
-
-export const app = new Hono<{ Variables: Variables }>()
+export const app = new Hono<AppEnv>()
 
 app.use(
   '*',
@@ -72,6 +68,8 @@ if (isDevLoginEnabled) {
 const route = app
   .get('/api/health', (c) => c.json({ ok: true }))
   .get('/api/me', (c) => c.json({ user: c.get('user') }))
+  .route('/api/ingest', ingestRoute)
+  .route('/api/runs', runsRoute)
 
 /** RPC 型（web の hono/client から参照する）。 */
 export type AppType = typeof route

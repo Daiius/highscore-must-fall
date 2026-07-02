@@ -13,10 +13,13 @@
   },
   "dependencies": {
     "@hono/node-server": "catalog:",
+    "@hono/zod-validator": "catalog:",
     "better-auth": "catalog:",
     "database": "workspace:*",
+    "drizzle-orm": "catalog:",
     "hono": "catalog:",
     "shared": "workspace:*",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
