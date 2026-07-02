@@ -1,7 +1,7 @@
 import { defineConfig } from 'drizzle-kit'
 
 // マイグレーション生成/適用の設定。schema は ./src/schema.ts、成果物は ./drizzle。
-// 参考（同一スタック・drizzle-orm 1.0 rc）: girls-side-analysis / seseraki。
+// 参考: 同一スタック（drizzle-orm 1.0 rc + better-auth）の実働リポ。
 
 // .env.database があれば読む（compose/CI では env 注入のため任意）。
 try {

@@ -80,7 +80,7 @@ shared  ← database ← server ← (worker)
 ## 5. 開発環境（docker compose watch）
 
 - ルートの `compose.yaml` で `db` / `server` / `web` を起動。`worker` は `profile: phase3` で隔離（MVP では起動しない）。
-- **bind mount を使わず** `docker compose watch` の同期を用いる（参考: 既存リポ `seseraki`）。
+- **bind mount を使わず** `docker compose watch` の同期を用いる（参考: 同一スタックの実働リポ）。
   - `server`: `sync+restart`（`packages/server`・`shared`・`database` を同期）。
   - `web`: `sync`（HMR）。
   - `pnpm-lock.yaml` 変更時のみ `rebuild`。

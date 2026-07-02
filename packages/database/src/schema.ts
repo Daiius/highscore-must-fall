@@ -9,7 +9,7 @@
 //   - 認証テーブル（user/session/account/verification）は better-auth のコアスキーマ。
 //     マイグレーションは database に集約する方針（AGENTS）のためここに定義し、server 側は
 //     drizzleAdapter(db, { schema: { user, session, account, verification } }) で連携する。
-//     （@better-auth/cli generate 由来の形。参考: girls-side-analysis / drizzle-orm 1.0 rc）
+//     （@better-auth/cli generate 由来の形。参考: drizzle-orm 1.0 rc + better-auth の実働リポ）
 //     owner_id はこの user.id を指す FK（ユーザー削除で own データを cascade 削除）。
 
 import { randomUUID } from 'node:crypto'
