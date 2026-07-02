@@ -2,20 +2,26 @@
 // drizzleAdapter で連携する（PRD 05・.claude/rules/database.md）。
 //
 //   - ソーシャル OAuth のみ（初手 Google）。GOOGLE_CLIENT_ID/SECRET が揃っている時だけ有効化する。
-//   - MVP 動作確認用に、本番以外では email+password を有効化して dev ログインバイパスを可能にする
-//     （実 Google クレデンシャル無しで Playwright E2E を通すため。導線は app.ts の /api/dev/login）。
+//   - MVP 動作確認用に、NODE_ENV=development のときだけ email+password を有効化して dev ログインバイパスを
+//     可能にする（実 Google クレデンシャル無しで Playwright E2E を通すため。導線は app.ts の /api/dev/login）。
+//
+// 開発機能（dev ログインバイパス・email+password・秘密のフォールバック）は `development` の明示 allowlist
+// でのみ有効化する。`production` はもちろん、NODE_ENV 未設定・`test`・`staging` など「development 以外」では
+// すべて無効化し、必須秘密が無ければ起動を失敗させる（fail-open を避ける。公開された非 development 環境で
+// 共有 dev ユーザーとして誰でも認証できてしまう事態を防ぐ）。
 
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { account, db, session, user, verification } from 'database'
 
-const isProd = process.env.NODE_ENV === 'production'
+/** 開発機能を許すのは NODE_ENV=development のときだけ（明示 allowlist）。 */
+const isDev = process.env.NODE_ENV === 'development'
 
-/** 本番では必須。本番以外は devFallback があればそれを使う（秘密情報を .env に置かず動かせる）。 */
+/** development のみ devFallback を許す。それ以外は値が無ければ throw（起動を失敗させる）。 */
 const required = (name: string, value: string | undefined, devFallback?: string): string => {
   if (value) return value
-  if (!isProd && devFallback !== undefined) return devFallback
-  throw new Error(`${name} is required`)
+  if (isDev && devFallback !== undefined) return devFallback
+  throw new Error(`${name} is required (NODE_ENV=${process.env.NODE_ENV ?? 'unset'})`)
 }
 
 const baseURL = required('BETTER_AUTH_URL', process.env.BETTER_AUTH_URL, 'http://localhost:4000')
@@ -26,8 +32,8 @@ const googleClientId = process.env.GOOGLE_CLIENT_ID
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
 const hasGoogle = Boolean(googleClientId && googleClientSecret)
 
-/** dev ログインバイパスが使えるか（本番では常に無効）。app.ts の導線ガードにも使う。 */
-export const isDevLoginEnabled = !isProd
+/** dev ログインバイパスが使えるか（development 限定）。app.ts の導線ガードにも使う。 */
+export const isDevLoginEnabled = isDev
 
 export const auth = betterAuth({
   appName: 'highscore-must-fall',
@@ -53,9 +59,9 @@ export const auth = betterAuth({
     },
   }),
 
-  // 本番以外のみ email+password を有効化（dev ログインバイパスの土台）。本番では無効。
+  // development のみ email+password を有効化（dev ログインバイパスの土台）。それ以外では無効。
   emailAndPassword: {
-    enabled: isDevLoginEnabled,
+    enabled: isDev,
   },
 
   trustedOrigins: [baseURL, webOrigin],
