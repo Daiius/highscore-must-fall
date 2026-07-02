@@ -3,6 +3,7 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { client } from '../api'
+import { useAuth } from '../lib/auth'
 
 interface UpgradeEntry {
   id: string
@@ -41,6 +42,7 @@ interface RunDetailData {
 export function RunDetail() {
   const { id } = useParams({ from: '/runs/$id' })
   const navigate = useNavigate()
+  const { clearSession } = useAuth()
   const [run, setRun] = useState<RunDetailData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -49,6 +51,10 @@ export function RunDetail() {
     void (async () => {
       setLoading(true)
       const res = await client.api.runs[':id'].$get({ param: { id } })
+      if (res.status === 401) {
+        clearSession()
+        return
+      }
       if (res.ok) {
         setRun((await res.json()) as RunDetailData)
       } else {
@@ -56,7 +62,7 @@ export function RunDetail() {
       }
       setLoading(false)
     })()
-  }, [id])
+  }, [id, clearSession])
 
   async function remove() {
     if (!confirm('このランを削除しますか？（元に戻せません）')) return

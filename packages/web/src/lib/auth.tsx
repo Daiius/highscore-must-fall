@@ -1,6 +1,7 @@
 // 認証コンテキスト。起動時に /api/me でセッションを確認し、user を配布する。
 // dev ログイン / サインアウト後は refresh() で再取得する。
 
+import { Navigate } from '@tanstack/react-router'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
 import { client, devLogin, signOut } from '../api'
 
@@ -17,6 +18,8 @@ interface AuthState {
   refresh: () => Promise<void>
   loginDev: () => Promise<void>
   logout: () => Promise<void>
+  /** API が 401 を返したときにセッション失効として認証状態を落とす。 */
+  clearSession: () => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -48,12 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const clearSession = useCallback(() => setUser(null), [])
+
   useEffect(() => {
     void refresh()
   }, [refresh])
 
   return (
-    <AuthContext.Provider value={{ user, loading, refresh, loginDev, logout }}>
+    <AuthContext.Provider value={{ user, loading, refresh, loginDev, logout, clearSession }}>
       {children}
     </AuthContext.Provider>
   )
@@ -63,4 +68,15 @@ export function useAuth(): AuthState {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')
   return ctx
+}
+
+/**
+ * 認証必須ページのガード。セッション確認中はプレースホルダ、未ログインなら / へリダイレクト。
+ * （MVP は loader ガードではなくコンポーネント境界でガードする。）
+ */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <p className="text-slate-400">読み込み中…</p>
+  if (!user) return <Navigate to="/" />
+  return <>{children}</>
 }

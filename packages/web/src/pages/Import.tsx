@@ -4,6 +4,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { API_BASE_URL, client } from '../api'
+import { useAuth } from '../lib/auth'
 
 interface Issue {
   level: 'error' | 'warning'
@@ -34,6 +35,7 @@ reward_ledger:
 
 export function Import() {
   const navigate = useNavigate()
+  const { clearSession } = useAuth()
   const [text, setText] = useState('')
   const [format, setFormat] = useState<Format>('auto')
   const [result, setResult] = useState<ValidateResult | null>(null)
@@ -49,6 +51,10 @@ export function Import() {
     setError(null)
     try {
       const res = await client.api.ingest.validate.$post({ json: { text, format } })
+      if (res.status === 401) {
+        clearSession()
+        return
+      }
       setResult((await res.json()) as ValidateResult)
     } catch {
       setError('検証リクエストに失敗しました')
@@ -64,6 +70,10 @@ export function Import() {
       const res = await client.api.runs.$post({
         json: { text, format, status, source: 'paste' },
       })
+      if (res.status === 401) {
+        clearSession()
+        return
+      }
       const data = (await res.json()) as { ok: boolean; runId?: string; issues?: Issue[] }
       if (res.ok && data.runId) {
         void navigate({ to: '/runs/$id', params: { id: data.runId } })

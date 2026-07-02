@@ -1,8 +1,9 @@
-// ラン一覧。owner の run を新しい順に表示。行クリックで詳細へ。
+// ラン一覧。owner の run を新しい順に表示。ページング対応。行クリックで詳細へ。
 
 import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { client } from '../api'
+import { useAuth } from '../lib/auth'
 
 interface RunRow {
   id: string
@@ -14,22 +15,40 @@ interface RunRow {
   rerollCount: number
 }
 
+const PAGE_SIZE = 50
+
 export function Runs() {
+  const { clearSession } = useAuth()
   const [runs, setRuns] = useState<RunRow[]>([])
   const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    void (async () => {
-      const res = await client.api.runs.$get({ query: { limit: '100', offset: '0' } })
+  const load = useCallback(
+    async (nextOffset: number) => {
+      setLoading(true)
+      const res = await client.api.runs.$get({
+        query: { limit: String(PAGE_SIZE), offset: String(nextOffset) },
+      })
+      if (res.status === 401) {
+        clearSession()
+        return
+      }
       const data = (await res.json()) as { runs: RunRow[]; total: number }
       setRuns(data.runs)
       setTotal(data.total)
+      setOffset(nextOffset)
       setLoading(false)
-    })()
-  }, [])
+    },
+    [clearSession],
+  )
 
-  if (loading) return <p className="text-slate-400">読み込み中…</p>
+  useEffect(() => {
+    void load(0)
+  }, [load])
+
+  const from = total === 0 ? 0 : offset + 1
+  const to = Math.min(offset + PAGE_SIZE, total)
 
   return (
     <div className="space-y-4">
@@ -43,51 +62,79 @@ export function Runs() {
         </Link>
       </div>
 
-      {runs.length === 0 ? (
+      {loading ? (
+        <p className="text-slate-400">読み込み中…</p>
+      ) : runs.length === 0 ? (
         <p className="text-slate-400 text-sm">
           まだランがありません。「インポート」から結果を登録してください。
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-700">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-800 text-slate-400">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">日時</th>
-                <th className="px-4 py-2 text-right font-medium">スコア</th>
-                <th className="px-4 py-2 text-right font-medium">生存日数</th>
-                <th className="px-4 py-2 text-right font-medium">ボーナス</th>
-                <th className="px-4 py-2 text-right font-medium">リロール</th>
-                <th className="px-4 py-2 text-left font-medium">状態</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {runs.map((run) => (
-                <tr key={run.id} className="hover:bg-slate-800/50">
-                  <td className="px-4 py-2">
-                    <Link
-                      to="/runs/$id"
-                      params={{ id: run.id }}
-                      className="text-indigo-400 hover:underline"
-                    >
-                      {formatDate(run.playedAt)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {run.finalScore?.toLocaleString() ?? '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">{run.daysSurvived ?? '—'}</td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {run.apocalypseBonus?.toLocaleString() ?? '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">{run.rerollCount}</td>
-                  <td className="px-4 py-2">
-                    <StatusBadge status={run.status} />
-                  </td>
+        <>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-800 text-slate-400">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">日時</th>
+                  <th className="px-4 py-2 text-right font-medium">スコア</th>
+                  <th className="px-4 py-2 text-right font-medium">生存日数</th>
+                  <th className="px-4 py-2 text-right font-medium">ボーナス</th>
+                  <th className="px-4 py-2 text-right font-medium">リロール</th>
+                  <th className="px-4 py-2 text-left font-medium">状態</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {runs.map((run) => (
+                  <tr key={run.id} className="hover:bg-slate-800/50">
+                    <td className="px-4 py-2">
+                      <Link
+                        to="/runs/$id"
+                        params={{ id: run.id }}
+                        className="text-indigo-400 hover:underline"
+                      >
+                        {formatDate(run.playedAt)}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono">
+                      {run.finalScore?.toLocaleString() ?? '—'}
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono">{run.daysSurvived ?? '—'}</td>
+                    <td className="px-4 py-2 text-right font-mono">
+                      {run.apocalypseBonus?.toLocaleString() ?? '—'}
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono">{run.rerollCount}</td>
+                    <td className="px-4 py-2">
+                      <StatusBadge status={run.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between text-slate-400 text-sm">
+            <span>
+              {from}–{to} / {total}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void load(Math.max(0, offset - PAGE_SIZE))}
+                disabled={offset === 0}
+                className="rounded border border-slate-600 px-3 py-1 hover:bg-slate-700 disabled:opacity-40"
+              >
+                前へ
+              </button>
+              <button
+                type="button"
+                onClick={() => void load(offset + PAGE_SIZE)}
+                disabled={to >= total}
+                className="rounded border border-slate-600 px-3 py-1 hover:bg-slate-700 disabled:opacity-40"
+              >
+                次へ
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

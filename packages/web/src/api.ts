@@ -32,8 +32,20 @@ export async function signOut(): Promise<void> {
   })
 }
 
-/** Google OAuth サインイン導線（server で GOOGLE_* が揃っているときのみ機能）。 */
-export function googleSignInUrl(callbackURL: string): string {
-  // better-auth の social sign-in はエンドポイント経由。ここでは簡易にリダイレクト用 URL を返す。
-  return `${baseUrl}/api/auth/sign-in/social?provider=google&callbackURL=${encodeURIComponent(callbackURL)}`
+/**
+ * Google OAuth サインイン開始。better-auth の social sign-in は POST エンドポイントで、
+ * 返却される認可 URL へ遷移する（GET リンクでは開始できない）。
+ * server で GOOGLE_* が揃っているときのみ機能する。失敗時は例外を投げる。
+ */
+export async function googleSignIn(callbackURL: string): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/auth/sign-in/social`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: 'google', callbackURL }),
+  })
+  if (!res.ok) throw new Error(`social sign-in の開始に失敗しました (${res.status})`)
+  const data = (await res.json()) as { url?: string; redirect?: boolean }
+  if (!data.url) throw new Error('認可 URL が返りませんでした（Google 未設定の可能性）')
+  window.location.href = data.url
 }
