@@ -13,6 +13,9 @@ COPY packages/shared/package.json   packages/shared/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/server/package.json   packages/server/package.json
 COPY packages/web/package.json      packages/web/package.json
+# pnpm の prepare フック（.githooks/install.sh）が install 時に呼ばれる。
+# git 管理外では自身で exit 0 するが、ファイルが存在しないと sh が開けず落ちるため先にコピーする。
+COPY .githooks .githooks
 
 RUN pnpm install --frozen-lockfile || pnpm install
 
