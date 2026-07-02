@@ -1,12 +1,16 @@
 ---
-name: create-pr
-description: このリポジトリの PR テンプレート（.github/PULL_REQUEST_TEMPLATE.md）に沿って、現在ブランチの GitHub PR を作成する。ユーザーが「PR を作って」「プルリク作成」等と依頼したとき、または実装をコミット済みで PR 化する段階で使う。
+name: create-draft-pr
+description: このリポジトリの PR テンプレート（.github/PULL_REQUEST_TEMPLATE.md）に沿って、現在ブランチの GitHub PR を**ドラフトで**作成する。ユーザーが「PR を作って」「プルリク作成」「ドラフト PR」等と依頼したとき、または実装をコミット済みで PR 化する段階で使う。既定で draft。
 ---
 
-# create-pr — テンプレ準拠の PR を作成する
+# create-draft-pr — テンプレ準拠の PR を（ドラフトで）作成する
 
-現在ブランチの変更を、リポジトリ正典の PR テンプレートに沿った本文で GitHub PR にする。
+現在ブランチの変更を、リポジトリ正典の PR テンプレートに沿った本文で GitHub **ドラフト PR** にする。
 `gh` の `--body` はテンプレを自動適用しないため、**このスキルがテンプレを読んで本文を組み立てる**。
+
+**既定でドラフト**: 常に `gh pr create --draft` で作成する（作業継続中でもまず出して共有できる）。
+準備が整ったら `gh pr ready <PR>` で Ready に上げる。**通常（非ドラフト）PR が明示的に欲しい場合のみ**
+`ready` 引数（例 `/create-draft-pr ready`）で `--draft` を外す。
 
 規約の出所: [`.claude/rules/commit.md`](../../rules/commit.md) の `## PR` / テンプレ本体 [`.github/PULL_REQUEST_TEMPLATE.md`](../../../.github/PULL_REQUEST_TEMPLATE.md)。
 
@@ -33,8 +37,10 @@ description: このリポジトリの PR テンプレート（.github/PULL_REQUE
 
 5. **push & 作成**
    - 未 push なら `git push -u origin <branch>`（pre-push で typecheck が走る）。
-   - `gh pr create --base main --head <branch> --title "<Conventional Commits 形式>" --body "<組み立てた本文>"`。
-   - タイトルは主コミットに倣う（例 `feat(shared): ...`）。
+   - **既定でドラフト作成**: `gh pr create --draft --base main --head <branch> --title "<Conventional Commits 形式>" --body "<組み立てた本文>"`。
+     作業途中なら未実行ゲートは正直に未チェックのまま出し、完成後に `gh pr ready <PR>` で Ready へ上げる。
+   - `ready` 引数が渡されたときのみ `--draft` を外して通常 PR にする。
+   - タイトルは主コミットに倣う（例 `feat(shared): ...`）。ドラフトでも `[WIP]` 等は付けない（状態は draft フラグで表す）。
 
 6. **報告**: 作成された PR の URL をユーザーに返す。
 
