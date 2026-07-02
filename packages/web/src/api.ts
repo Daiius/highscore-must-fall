@@ -22,14 +22,15 @@ export async function devLogin(): Promise<boolean> {
   return res.ok
 }
 
-/** better-auth サインアウト。 */
-export async function signOut(): Promise<void> {
-  await fetch(`${baseUrl}/api/auth/sign-out`, {
+/** better-auth サインアウト。server 側でセッション破棄できたか（ok）を返す。 */
+export async function signOut(): Promise<boolean> {
+  const res = await fetch(`${baseUrl}/api/auth/sign-out`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: '{}',
   })
+  return res.ok
 }
 
 /**

@@ -36,7 +36,11 @@ export function RootLayout() {
                 <span className="text-slate-400 text-sm">{user.name}</span>
                 <button
                   type="button"
-                  onClick={() => void logout()}
+                  onClick={() => {
+                    void logout().then((ok) => {
+                      if (!ok) alert('ログアウトに失敗しました。時間をおいて再試行してください。')
+                    })
+                  }}
                   className="rounded border border-slate-600 px-3 py-1.5 text-slate-300 text-sm hover:bg-slate-700"
                 >
                   ログアウト

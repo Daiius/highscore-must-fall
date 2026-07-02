@@ -1,7 +1,6 @@
-// 記述分析（MVP。prd/06）。confirmed run を全件集計してスコア推移・アップグレード取得頻度・
-// 選択したアップグレードの取得タイミング（何手目・何週）分布を Recharts で可視化する。
-// 集計キーは表示名でなく安定した catalog ID を使う。集計は client 側（単一ユーザー・小規模想定。
-// 重くなれば server 集計エンドポイントへ移す）。一覧は total まで全ページ取得し、黙って打ち切らない。
+// 記述分析（MVP。prd/06）。server の集計エンドポイント（/api/analysis/summary）を1回叩くだけ
+// （run 詳細の N+1 取得を排除）。スコア推移（played_at 軸）・アップグレード取得頻度・
+// 選択アップグレードの取得タイミング（何手目・何週）分布を Recharts で可視化する。集計キーは catalog ID。
 
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -18,162 +17,104 @@ import {
 import { client } from '../api'
 import { useAuth } from '../lib/auth'
 
-interface RunRow {
-  id: string
-  status: 'draft' | 'confirmed'
+interface Summary {
+  stats: { count: number; best: number; avg: number }
+  scoreTrend: { playedAt: string; finalScore: number | null }[]
+  frequency: { catalogId: string | null; name: string | null; count: number }[]
+  weekByCatalog: { catalogId: string | null; week: number; count: number }[]
+  orderByCatalog: { catalogId: string | null; order: number | null; count: number }[]
 }
-interface UpgradeEntry {
-  entryType: 'upgrade' | 'reroll'
-  weekIndex: number
-  upgradeOrder: number | null
-  catalogId: string | null
-  name: string | null
-}
-interface DetailData {
-  finalScore: number | null
-  playedAt: string
-  upgradeEntries: UpgradeEntry[]
-}
-
-const LIST_PAGE = 200
 
 export function Analysis() {
   const { clearSession } = useAuth()
-  const [details, setDetails] = useState<DetailData[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
 
   useEffect(() => {
     void (async () => {
-      // confirmed run の id を total まで全ページ取得（黙って打ち切らない）。
-      const ids: string[] = []
-      let offset = 0
-      let total = Number.POSITIVE_INFINITY
-      while (offset < total) {
-        const res = await client.api.runs.$get({
-          query: { limit: String(LIST_PAGE), offset: String(offset) },
-        })
-        if (res.status === 401) {
-          clearSession()
-          return
-        }
-        const data = (await res.json()) as { runs: RunRow[]; total: number }
-        total = data.total
-        for (const r of data.runs) if (r.status === 'confirmed') ids.push(r.id)
-        if (data.runs.length === 0) break
-        offset += LIST_PAGE
+      setLoading(true)
+      const res = await client.api.analysis.summary.$get()
+      if (res.status === 401) {
+        clearSession()
+        return
       }
-      const fetched = await Promise.all(
-        ids.map(async (id) => {
-          const res = await client.api.runs[':id'].$get({ param: { id } })
-          return res.ok ? ((await res.json()) as DetailData) : null
-        }),
-      )
-      setDetails(fetched.filter((d): d is DetailData => d !== null))
+      if (!res.ok) {
+        setError('分析データの取得に失敗しました')
+        setLoading(false)
+        return
+      }
+      setSummary((await res.json()) as Summary)
       setLoading(false)
     })()
   }, [clearSession])
 
   const scoreTrend = useMemo(
     () =>
-      [...details]
+      (summary?.scoreTrend ?? [])
         .filter((d) => d.finalScore != null)
-        .sort((a, b) => new Date(a.playedAt).getTime() - new Date(b.playedAt).getTime())
-        .map((d, i) => ({ n: i + 1, score: d.finalScore as number })),
-    [details],
+        .map((d) => ({ t: new Date(d.playedAt).getTime(), score: d.finalScore as number })),
+    [summary],
   )
 
-  // catalogId をキーに頻度集計（表示名は不安定なので集計キーにしない）。
-  const upgradeFreq = useMemo(() => {
-    const counts = new Map<string, { name: string; count: number }>()
-    for (const d of details) {
-      for (const e of d.upgradeEntries) {
-        if (e.entryType !== 'upgrade' || !e.catalogId) continue
-        const cur = counts.get(e.catalogId) ?? { name: e.name ?? e.catalogId, count: 0 }
-        cur.count += 1
-        counts.set(e.catalogId, cur)
-      }
-    }
-    return [...counts.entries()]
-      .map(([catalogId, v]) => ({ catalogId, name: v.name, count: v.count }))
-      .sort((a, b) => b.count - a.count)
-  }, [details])
+  const frequency = summary?.frequency ?? []
+  const selectedId = selected ?? frequency[0]?.catalogId ?? null
+  const selectedName = frequency.find((u) => u.catalogId === selectedId)?.name ?? ''
 
-  // 選択アップグレード（既定は最頻）。
-  const selectedId = selected ?? upgradeFreq[0]?.catalogId ?? null
+  const orderDist = useMemo(
+    () =>
+      (summary?.orderByCatalog ?? [])
+        .filter((d) => d.catalogId === selectedId && d.order != null)
+        .map((d) => ({ order: `${d.order}手目`, orderNum: d.order as number, count: d.count }))
+        .sort((a, b) => a.orderNum - b.orderNum),
+    [summary, selectedId],
+  )
 
-  // 選択アップグレードの「何手目（upgradeOrder）」分布。
-  const orderDist = useMemo(() => {
-    if (!selectedId) return []
-    const counts = new Map<number, number>()
-    for (const d of details) {
-      for (const e of d.upgradeEntries) {
-        if (e.entryType === 'upgrade' && e.catalogId === selectedId && e.upgradeOrder != null) {
-          counts.set(e.upgradeOrder, (counts.get(e.upgradeOrder) ?? 0) + 1)
-        }
-      }
-    }
-    return [...counts.entries()]
-      .map(([order, count]) => ({ order: `${order}手目`, orderNum: order, count }))
-      .sort((a, b) => a.orderNum - b.orderNum)
-  }, [details, selectedId])
-
-  // 選択アップグレードの「何週」分布。
-  const weekDist = useMemo(() => {
-    if (!selectedId) return []
-    const counts = new Map<number, number>()
-    for (const d of details) {
-      for (const e of d.upgradeEntries) {
-        if (e.entryType === 'upgrade' && e.catalogId === selectedId) {
-          counts.set(e.weekIndex, (counts.get(e.weekIndex) ?? 0) + 1)
-        }
-      }
-    }
-    return [...counts.entries()]
-      .map(([week, count]) => ({ week: `WEEK ${week}`, weekNum: week, count }))
-      .sort((a, b) => a.weekNum - b.weekNum)
-  }, [details, selectedId])
-
-  const stats = useMemo(() => {
-    const scores = details.map((d) => d.finalScore).filter((s): s is number => s != null)
-    if (scores.length === 0) return null
-    return {
-      count: scores.length,
-      best: Math.max(...scores),
-      avg: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
-    }
-  }, [details])
+  const weekDist = useMemo(
+    () =>
+      (summary?.weekByCatalog ?? [])
+        .filter((d) => d.catalogId === selectedId)
+        .map((d) => ({ week: `WEEK ${d.week}`, weekNum: d.week, count: d.count }))
+        .sort((a, b) => a.weekNum - b.weekNum),
+    [summary, selectedId],
+  )
 
   if (loading) return <p className="text-slate-400">読み込み中…</p>
-  if (details.length === 0)
+  if (error) return <p className="text-red-400 text-sm">{error}</p>
+  if (!summary || summary.stats.count === 0)
     return (
       <p className="text-slate-400 text-sm">
         確定済みのランがまだありません。インポートで確定保存すると分析できます。
       </p>
     )
 
-  const selectedName = upgradeFreq.find((u) => u.catalogId === selectedId)?.name ?? ''
-
   return (
     <div className="space-y-8">
       <h1 className="font-bold text-white text-xl">分析</h1>
 
-      {stats && (
-        <div className="grid grid-cols-3 gap-3">
-          <Stat label="確定ラン数" value={stats.count.toLocaleString()} />
-          <Stat label="ベストスコア" value={stats.best.toLocaleString()} />
-          <Stat label="平均スコア" value={stats.avg.toLocaleString()} />
-        </div>
-      )}
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label="確定ラン数" value={summary.stats.count.toLocaleString()} />
+        <Stat label="ベストスコア" value={summary.stats.best.toLocaleString()} />
+        <Stat label="平均スコア" value={summary.stats.avg.toLocaleString()} />
+      </div>
 
-      <ChartCard title="スコア推移（古い順）">
+      <ChartCard title="スコア推移（プレイ日時）">
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={scoreTrend} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis dataKey="n" stroke="#94a3b8" fontSize={12} />
+            <XAxis
+              dataKey="t"
+              type="number"
+              scale="time"
+              domain={['dataMin', 'dataMax']}
+              stroke="#94a3b8"
+              fontSize={11}
+              tickFormatter={fmtDate}
+            />
             <YAxis stroke="#94a3b8" fontSize={12} width={64} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} />
-            <Line type="monotone" dataKey="score" stroke="#818cf8" strokeWidth={2} dot={false} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(v) => fmtDate(Number(v))} />
+            <Line type="monotone" dataKey="score" stroke="#818cf8" strokeWidth={2} dot />
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -181,10 +122,10 @@ export function Analysis() {
       <ChartCard title="アップグレード取得頻度（上位15）">
         <ResponsiveContainer
           width="100%"
-          height={Math.max(240, Math.min(upgradeFreq.length, 15) * 26)}
+          height={Math.max(240, Math.min(frequency.length, 15) * 26)}
         >
           <BarChart
-            data={upgradeFreq.slice(0, 15)}
+            data={frequency.slice(0, 15)}
             layout="vertical"
             margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
           >
@@ -212,8 +153,8 @@ export function Analysis() {
             onChange={(e) => setSelected(e.target.value)}
             className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-200 text-sm"
           >
-            {upgradeFreq.map((u) => (
-              <option key={u.catalogId} value={u.catalogId}>
+            {frequency.map((u) => (
+              <option key={u.catalogId ?? ''} value={u.catalogId ?? ''}>
                 {u.name}（{u.count}）
               </option>
             ))}
@@ -223,32 +164,37 @@ export function Analysis() {
           「{selectedName}」が全体で何手目・何週に取られたかの分布（catalog ID で集計）。
         </p>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-slate-700 bg-slate-800/30 p-2">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={orderDist} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="order" stroke="#94a3b8" fontSize={11} />
-                <YAxis stroke="#94a3b8" fontSize={12} width={40} allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#33415533' }} />
-                <Bar dataKey="count" fill="#fbbf24" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <p className="pb-1 text-center text-slate-500 text-xs">取得順（何手目）</p>
-          </div>
-          <div className="rounded-lg border border-slate-700 bg-slate-800/30 p-2">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={weekDist} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="week" stroke="#94a3b8" fontSize={11} />
-                <YAxis stroke="#94a3b8" fontSize={12} width={40} allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#33415533' }} />
-                <Bar dataKey="count" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <p className="pb-1 text-center text-slate-500 text-xs">取得週</p>
-          </div>
+          <TimingChart data={orderDist} dataKey="order" fill="#fbbf24" caption="取得順（何手目）" />
+          <TimingChart data={weekDist} dataKey="week" fill="#38bdf8" caption="取得週" />
         </div>
       </section>
+    </div>
+  )
+}
+
+function TimingChart({
+  data,
+  dataKey,
+  fill,
+  caption,
+}: {
+  data: { count: number }[]
+  dataKey: string
+  fill: string
+  caption: string
+}) {
+  return (
+    <div className="rounded-lg border border-slate-700 bg-slate-800/30 p-2">
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <XAxis dataKey={dataKey} stroke="#94a3b8" fontSize={11} />
+          <YAxis stroke="#94a3b8" fontSize={12} width={40} allowDecimals={false} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#33415533' }} />
+          <Bar dataKey="count" fill={fill} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="pb-1 text-center text-slate-500 text-xs">{caption}</p>
     </div>
   )
 }
@@ -259,6 +205,12 @@ const TOOLTIP_STYLE = {
   borderRadius: 8,
   color: '#e2e8f0',
 } as const
+
+function fmtDate(ms: number): string {
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })
+}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

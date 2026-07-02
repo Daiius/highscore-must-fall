@@ -17,7 +17,8 @@ interface AuthState {
   loading: boolean
   refresh: () => Promise<void>
   loginDev: () => Promise<void>
-  logout: () => Promise<void>
+  /** server 側でセッション破棄できたら true。失敗時はローカル状態を維持する。 */
+  logout: () => Promise<boolean>
   /** API が 401 を返したときにセッション失効として認証状態を落とす。 */
   clearSession: () => void
 }
@@ -46,9 +47,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refresh()
   }, [refresh])
 
+  // server 側でセッション破棄できたときだけローカルの認証状態を落とす
+  // （失敗時に cookie が有効なまま UI だけログアウト表示になるのを防ぐ）。成否を返す。
   const logout = useCallback(async () => {
-    await signOut()
-    setUser(null)
+    const ok = await signOut()
+    if (ok) setUser(null)
+    return ok
   }, [])
 
   const clearSession = useCallback(() => setUser(null), [])

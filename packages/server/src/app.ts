@@ -13,6 +13,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth, isDevLoginEnabled, webOrigin } from './lib/auth'
 import type { AppEnv } from './lib/context'
+import { analysisRoute } from './routes/analysis'
 import { catalogRoute } from './routes/catalog'
 import { ingestRoute } from './routes/ingest'
 import { runsRoute } from './routes/runs'
@@ -72,6 +73,7 @@ const route = app
   .route('/api/ingest', ingestRoute)
   .route('/api/runs', runsRoute)
   .route('/api/catalog', catalogRoute)
+  .route('/api/analysis', analysisRoute)
 
 /** RPC 型（web の hono/client から参照する）。 */
 export type AppType = typeof route
