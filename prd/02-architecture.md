@@ -32,8 +32,9 @@
 | 認証 | **better-auth**（Google OAuth） | [05](./05-auth-and-privacy.md) |
 | フロント | **Vite + React 19 + TanStack Router** | 型安全ルーティング |
 | スタイル | **TailwindCSS（v4）** | 特定デザインなし。仮デザイン→後でゲーム風 |
+| 可視化 | **Recharts** | 記述分析のチャート（[06](./06-analysis.md)。MVP 決定 2026-07-03） |
 | Lint/Format | **Biome** | 単一ツール。Tailwind クラス整列は `useSortedClasses` |
-| テスト | **Vitest**（+ 将来 Playwright） | `shared` の単体テスト重視 |
+| テスト | **Vitest**（+ Playwright で E2E） | `shared` の単体テスト重視。UI は Playwright で結線確認 |
 | パッケージ管理 | **pnpm**（workspace + catalog） | |
 | 開発環境 | **docker compose watch** | bind mount 最小 |
 
