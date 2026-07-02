@@ -9,6 +9,7 @@
 
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
+import { StoredDatetimeSchema } from 'shared'
 import { z } from 'zod'
 import { type AppEnv, requireUser } from '../lib/context'
 import { ingestSubmission } from '../lib/ingest'
@@ -19,8 +20,8 @@ const createBody = z.object({
   format: z.enum(['json', 'yaml', 'auto']).default('auto'),
   status: z.enum(['draft', 'confirmed']),
   source: z.enum(['file_import', 'paste']).default('paste'),
-  /** 任意の投入日時上書き（ISO8601, offset 付き）。無ければ record.played_at → 投入時刻。 */
-  playedAt: z.iso.datetime({ offset: true }).optional(),
+  /** 任意の投入日時上書き（ISO8601, offset 付き・MySQL DATETIME 範囲内）。無ければ record.played_at → 投入時刻。 */
+  playedAt: StoredDatetimeSchema.optional(),
   llmModel: z.string().max(128).optional(),
   sourceNote: z.string().optional(),
 })

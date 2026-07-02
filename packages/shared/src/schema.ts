@@ -37,6 +37,19 @@ const catalogName = z
     message: `名前が長すぎます（正規化後 ${VARCHAR_MAX} 文字以内）`,
   })
 
+/**
+ * MySQL DATETIME に格納する ISO 日時（offset 付き）。
+ * DATETIME の表現範囲は西暦 1000–9999。ISO として妥当でもこの範囲外だと保存時 500 になるため、
+ * オフセット適用後の UTC 年が範囲内であることを contract で保証する（prd/03 §3.1・prd/04 §4）。
+ */
+export const StoredDatetimeSchema = z.iso.datetime({ offset: true }).refine(
+  (s) => {
+    const year = new Date(s).getUTCFullYear()
+    return year >= 1000 && year <= 9999
+  },
+  { message: 'MySQL DATETIME の範囲（西暦 1000–9999）を超えています' },
+)
+
 /** 履歴エントリの種別。第3種は存在しない（prd/01 §3.1）。 */
 export const ENTRY_TYPES = ['upgrade', 'reroll'] as const
 
@@ -91,7 +104,7 @@ export const RewardEntrySchema = z.object({
 export const RunRecordSchema = z.object({
   schema_version: z.literal(SCHEMA_VERSION).default(SCHEMA_VERSION),
   game: z.string().max(VARCHAR_MAX).default('UTOPIA MUST FALL'),
-  played_at: z.iso.datetime({ offset: true }).optional(), // 省略時はサーバが投入時刻を補完
+  played_at: StoredDatetimeSchema.optional(), // 省略時はサーバが投入時刻を補完
   result: ResultSchema,
   upgrade_history: z.array(UpgradeHistoryEntrySchema), // 順序保持
   reward_ledger: z.array(RewardEntrySchema),

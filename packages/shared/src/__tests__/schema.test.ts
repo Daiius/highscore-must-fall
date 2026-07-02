@@ -68,6 +68,21 @@ describe('RunRecordSchema', () => {
     }
     expect(RunRecordSchema.safeParse(bad).success).toBe(false)
   })
+
+  it('played_at は ISO(offset) を受理し、MySQL DATETIME 範囲外は error', () => {
+    const input = sampleRun()
+    expect(
+      RunRecordSchema.safeParse({ ...input, played_at: '2026-07-03T02:00:00+09:00' }).success,
+    ).toBe(true)
+    // 西暦 1000 未満・9999 超は保存不可。
+    expect(RunRecordSchema.safeParse({ ...input, played_at: '0999-12-31T23:59:59Z' }).success).toBe(
+      false,
+    )
+    // offset 適用で UTC が 10000 年になるケースも弾く。
+    expect(
+      RunRecordSchema.safeParse({ ...input, played_at: '9999-12-31T23:59:59-05:00' }).success,
+    ).toBe(false)
+  })
 })
 
 describe('UpgradeHistoryEntrySchema', () => {
