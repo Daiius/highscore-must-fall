@@ -157,11 +157,13 @@ CREATE INDEX `verification_identifier_idx` ON `verification` (`identifier`);--> 
 ALTER TABLE `account` ADD CONSTRAINT `account_user_id_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `catalog_alias` ADD CONSTRAINT `catalog_alias_upgrade_catalog_id_upgrade_catalog_id_fkey` FOREIGN KEY (`upgrade_catalog_id`) REFERENCES `upgrade_catalog`(`id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `catalog_alias` ADD CONSTRAINT `catalog_alias_reward_catalog_id_reward_catalog_id_fkey` FOREIGN KEY (`reward_catalog_id`) REFERENCES `reward_catalog`(`id`) ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE `reward_catalog` ADD CONSTRAINT `reward_catalog_first_seen_run_id_run_id_fkey` FOREIGN KEY (`first_seen_run_id`) REFERENCES `run`(`id`) ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE `reward_entry` ADD CONSTRAINT `reward_entry_reward_catalog_id_reward_catalog_id_fkey` FOREIGN KEY (`reward_catalog_id`) REFERENCES `reward_catalog`(`id`) ON DELETE RESTRICT;--> statement-breakpoint
 ALTER TABLE `reward_entry` ADD CONSTRAINT `reward_entry_run_owner_fkey` FOREIGN KEY (`run_id`,`owner_id`) REFERENCES `run`(`id`,`owner_id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `run` ADD CONSTRAINT `run_owner_id_user_id_fkey` FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `run_image` ADD CONSTRAINT `run_image_run_owner_fkey` FOREIGN KEY (`run_id`,`owner_id`) REFERENCES `run`(`id`,`owner_id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `run_payload` ADD CONSTRAINT `run_payload_run_owner_fkey` FOREIGN KEY (`run_id`,`owner_id`) REFERENCES `run`(`id`,`owner_id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `session` ADD CONSTRAINT `session_user_id_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE `upgrade_catalog` ADD CONSTRAINT `upgrade_catalog_first_seen_run_id_run_id_fkey` FOREIGN KEY (`first_seen_run_id`) REFERENCES `run`(`id`) ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE `upgrade_entry` ADD CONSTRAINT `upgrade_entry_upgrade_catalog_id_upgrade_catalog_id_fkey` FOREIGN KEY (`upgrade_catalog_id`) REFERENCES `upgrade_catalog`(`id`) ON DELETE RESTRICT;--> statement-breakpoint
 ALTER TABLE `upgrade_entry` ADD CONSTRAINT `upgrade_entry_run_owner_fkey` FOREIGN KEY (`run_id`,`owner_id`) REFERENCES `run`(`id`,`owner_id`) ON DELETE CASCADE;

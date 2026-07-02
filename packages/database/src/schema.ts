@@ -263,7 +263,10 @@ export const upgradeCatalog = mysqlTable(
     // 種別: contract（既定）/ opportunity_upgrade(OU)。unverified 同様、後から人手で付与/検証する属性。
     kind: mysqlEnum('kind', ['contract', 'opportunity_upgrade']).notNull().default('contract'),
     verified: boolean('verified').notNull().default(false), // 既定 false（unverified で自動登録）
-    firstSeenRunId: varchar('first_seen_run_id', { length: 36 }),
+    // 初出 run。run/ユーザー削除後もグローバルカタログは残すため FK は SET NULL。
+    firstSeenRunId: varchar('first_seen_run_id', { length: 36 }).references(() => run.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [uniqueIndex('upgrade_catalog_canonical_key_uidx').on(t.canonicalKey)],
@@ -276,7 +279,10 @@ export const rewardCatalog = mysqlTable(
     canonicalKey: varchar('canonical_key', { length: 191 }).notNull(),
     displayName: varchar('display_name', { length: 191 }).notNull(),
     verified: boolean('verified').notNull().default(false),
-    firstSeenRunId: varchar('first_seen_run_id', { length: 36 }),
+    // 初出 run。run/ユーザー削除後もグローバルカタログは残すため FK は SET NULL。
+    firstSeenRunId: varchar('first_seen_run_id', { length: 36 }).references(() => run.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [uniqueIndex('reward_catalog_canonical_key_uidx').on(t.canonicalKey)],

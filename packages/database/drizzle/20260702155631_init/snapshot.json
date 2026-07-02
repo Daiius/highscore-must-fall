@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "mysql",
-  "id": "b316bb3f-d88f-42e7-ad0a-a558b7091a1c",
+  "id": "150ced6e-25d0-45c2-b353-1b790a2966bc",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -1927,6 +1927,21 @@
     },
     {
       "columns": [
+        "first_seen_run_id"
+      ],
+      "tableTo": "run",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "reward_catalog_first_seen_run_id_run_id_fkey",
+      "entityType": "fks",
+      "table": "reward_catalog"
+    },
+    {
+      "columns": [
         "reward_catalog_id"
       ],
       "tableTo": "reward_catalog",
@@ -2020,6 +2035,21 @@
       "name": "session_user_id_user_id_fkey",
       "entityType": "fks",
       "table": "session"
+    },
+    {
+      "columns": [
+        "first_seen_run_id"
+      ],
+      "tableTo": "run",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "upgrade_catalog_first_seen_run_id_run_id_fkey",
+      "entityType": "fks",
+      "table": "upgrade_catalog"
     },
     {
       "columns": [
