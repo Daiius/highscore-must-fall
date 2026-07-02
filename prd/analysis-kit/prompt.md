@@ -5,6 +5,8 @@ Utopia Must Fall のリザルト画面スクショから、投入用の YAML を
 
 - [`template.yaml`](./template.yaml) — 埋めるべき空テンプレ（記法の注意を `#` コメントで内包）
 - [`example.yaml`](./example.yaml) — 埋まった**正解例**（few-shot アンカー。リロールの書き方も実演）
+- [`example-02.yaml`](./example-02.yaml) / [`example-03.yaml`](./example-03.yaml) — 追加の実ラン正解例
+  （スクショは [`../samples/`](../samples/) の `*-02` / `*-03`。02 はリロール1件を含む・03 は 5 週規模で全て通常アップグレード。いずれも `points` 合計 = `apocalypse_bonus` で自己整合）
 - [`oneshot.md`](./oneshot.md) — **一発コピペ用**（指示＋記法＋正解例を1メッセージに畳んだ版。ファイル添付が面倒なとき）
 - 本ファイル — 最小指示プロンプト（ファイル添付運用の説明）
 

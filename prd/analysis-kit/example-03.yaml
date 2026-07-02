@@ -1,0 +1,84 @@
+# 追加の正解例（sample-03 / prd/samples/*-03.png）。記法は example.yaml（sample-01）と同一。
+# 自己整合: reward_ledger の points 合計 = 3820 = result.apocalypse_bonus。
+# リロール（灰色斜体）は無し。全て通常アップグレード。WEEK 5 は空。
+game: UTOPIA MUST FALL
+result:
+  days_survived: 28
+  final_score: 590690
+  aliens_defeated: 6098
+  nukes_launched: 51
+  apocalypse_bonus: 3820 # = REWARD LEDGER の ☆ 合計
+upgrade_history:
+  # WEEK 1（DEPLOY LASER WATCHTOWER は連続 2 回 → そのまま重複）
+  - { week: 1, type: upgrade, name: STOCKPILE NUKES }
+  - { week: 1, type: upgrade, name: ARC FLAIL }
+  - { week: 1, type: upgrade, name: IMPROVE GIMBAL SPEED }
+  - { week: 1, type: upgrade, name: PLASMA PHYSICS LAB }
+  - { week: 1, type: upgrade, name: COMBO ARC FLAIL }
+  - { week: 1, type: upgrade, name: RAPID ARC FLAIL }
+  - { week: 1, type: upgrade, name: INCREASE FIRE RATE }
+  - { week: 1, type: upgrade, name: EXTENDED FLAIL }
+  - { week: 1, type: upgrade, name: INSTITUTE OF AUTOMATION }
+  - { week: 1, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 1, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 1, type: upgrade, name: NUCLEAR WEAPONS LAB }
+  # WEEK 2
+  - { week: 2, type: upgrade, name: INCREASE PRODUCTION }
+  - { week: 2, type: upgrade, name: OPTIMIZED OPERATIONS }
+  - { week: 2, type: upgrade, name: REGENERATIVE SHIELD }
+  - { week: 2, type: upgrade, name: RATIONED WARHEADS }
+  - { week: 2, type: upgrade, name: OFFENSIVE INNOVATION CENTER }
+  - { week: 2, type: upgrade, name: VOLLEY RAILGUN }
+  - { week: 2, type: upgrade, name: TRIPLE VOLLEY RAILGUN }
+  - { week: 2, type: upgrade, name: INCREASE FLAIL AMPERES }
+  - { week: 2, type: upgrade, name: HIGH FREQUENCY LASER }
+  - { week: 2, type: upgrade, name: INCREASE FIRE RATE }
+  - { week: 2, type: upgrade, name: HIGH FREQUENCY LASER }
+  # WEEK 3（TWIN DRONE FACTORY は綴りそのまま）
+  - { week: 3, type: upgrade, name: ADVANCED MATERIALS LAB }
+  - { week: 3, type: upgrade, name: ANTIMATTER WARHEADS }
+  - { week: 3, type: upgrade, name: SUPERCONDUCTING POWER LINES }
+  - { week: 3, type: upgrade, name: EXTENDED PLASMA DECAY }
+  - { week: 3, type: upgrade, name: DEPLOY DRONE FACTORY }
+  - { week: 3, type: upgrade, name: TWIN DRONE FACTORY }
+  - { week: 3, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 3, type: upgrade, name: HIGH FREQUENCY LASER }
+  - { week: 3, type: upgrade, name: STRATOSPHERIC FLAIL }
+  # WEEK 4
+  - { week: 4, type: upgrade, name: INCREASE FIRE RATE }
+  - { week: 4, type: upgrade, name: DOUBLE-BARRELLED DRONES }
+  - { week: 4, type: upgrade, name: EFFICIENT RELOADING }
+  - { week: 4, type: upgrade, name: BULKY PROJECTILES }
+  - { week: 4, type: upgrade, name: QUAD VOLLEY RAILGUN }
+  - { week: 4, type: upgrade, name: PENT VOLLEY RAILGUN }
+  - { week: 4, type: upgrade, name: EXTENDED SENSOR RANGE }
+  - { week: 4, type: upgrade, name: SUPERCONDUCTING FLAIL }
+  - { week: 4, type: upgrade, name: RAPID REGENERATION }
+  # WEEK 5: 取得なし（空）
+reward_ledger:
+  # points = 行に表示された合計点（count と掛けない）。合計 = 3820。
+  - { name: CHEF'S KISS, count: 24, points: 480 }
+  - { name: LASER DISCO, count: 10, points: 300 }
+  - { name: MINT CONDITION, count: 12, points: 300 }
+  - { name: BOHEMIAN, count: 1, points: 250 }
+  - { name: CALAMARI FRITTI, count: 1, points: 200 }
+  - { name: DOUBLE RAINBOW, count: 5, points: 175 }
+  - { name: HARD CHEESE, count: 17, points: 170 }
+  - { name: SORTED, count: 5, points: 150 }
+  - { name: EGGS ROYALE, count: 3, points: 150 }
+  - { name: SEAFOOD PLATTER, count: 3, points: 150 }
+  - { name: ANNIHILATION, count: 29, points: 145 }
+  - { name: DISCIPLINE, count: 13, points: 130 }
+  - { name: IT'S A SHINY!, count: 1, points: 125 }
+  - { name: OBSESSIVE, count: 15, points: 120 }
+  - { name: NOT SO FAST, count: 12, points: 120 }
+  - { name: CONSERVATION, count: 3, points: 120 }
+  - { name: COMPLETIST, count: 21, points: 105 }
+  - { name: TOASTY, count: 7, points: 105 }
+  - { name: GONNAHAVEMESOMEFUN, count: 5, points: 100 }
+  - { name: MR. CREOSOTE, count: 1, points: 100 }
+  - { name: CARPET BOMBER, count: 5, points: 100 }
+  - { name: NO ESCAPE, count: 3, points: 90 }
+  - { name: GOOD DOG, count: 2, points: 50 }
+  - { name: SHAPE ROTATOR, count: 1, points: 45 }
+  - { name: BUSY DAY, count: 1, points: 40 }

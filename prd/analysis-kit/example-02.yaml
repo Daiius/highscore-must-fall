@@ -1,0 +1,73 @@
+# 追加の正解例（sample-02 / prd/samples/*-02.png）。記法は example.yaml（sample-01）と同一。
+# 自己整合: reward_ledger の points 合計 = 2320 = result.apocalypse_bonus。
+# WEEK 3 の DIGITIZE CONSCIOUSNESS は灰色斜体 → リロール（type: reroll, flavor）で記録する実例。
+game: UTOPIA MUST FALL
+result:
+  days_survived: 21
+  final_score: 347791
+  aliens_defeated: 3626
+  nukes_launched: 43
+  apocalypse_bonus: 2320 # = REWARD LEDGER の ☆ 合計
+upgrade_history:
+  # WEEK 1（画面の並び順のまま。STOCKPILE NUKES は連続 2 回 → そのまま重複）
+  - { week: 1, type: upgrade, name: ARC FLAIL }
+  - { week: 1, type: upgrade, name: STOCKPILE NUKES }
+  - { week: 1, type: upgrade, name: STOCKPILE NUKES }
+  - { week: 1, type: upgrade, name: PLASMA PHYSICS LAB }
+  - { week: 1, type: upgrade, name: NUCLEAR WEAPONS LAB }
+  - { week: 1, type: upgrade, name: COMBO ARC FLAIL }
+  - { week: 1, type: upgrade, name: EXTENDED FLAIL }
+  - { week: 1, type: upgrade, name: RATIONED WARHEADS }
+  - { week: 1, type: upgrade, name: REGENERATIVE SHIELD }
+  - { week: 1, type: upgrade, name: RAPID ARC FLAIL }
+  # WEEK 2（左カラムから右カラム上部へ連続。DEPLOY LASER WATCHTOWER は連続 2 回）
+  - { week: 2, type: upgrade, name: INCREASE FIRE RATE }
+  - { week: 2, type: upgrade, name: INSTITUTE OF AUTOMATION }
+  - { week: 2, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 2, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 2, type: upgrade, name: INCREASE PRODUCTION }
+  - { week: 2, type: upgrade, name: OFFENSIVE INNOVATION CENTER }
+  - { week: 2, type: upgrade, name: COBALT COIL GUN }
+  - { week: 2, type: upgrade, name: ADVANCED MATERIALS LAB }
+  - { week: 2, type: upgrade, name: INCREASE FLAIL AMPERES }
+  - { week: 2, type: upgrade, name: HIGH FREQUENCY LASER }
+  - { week: 2, type: upgrade, name: GRAPHENE TIPPED RODS }
+  - { week: 2, type: upgrade, name: PRIORITY CHARGING }
+  # WEEK 3（DIGITIZE CONSCIOUSNESS は灰色斜体 = リロール）
+  - { week: 3, type: upgrade, name: RICOCHET MUNITIONS }
+  - { week: 3, type: upgrade, name: HIGH FREQUENCY LASER }
+  - { week: 3, type: upgrade, name: SUPERCONDUCTING FLAIL }
+  - { week: 3, type: upgrade, name: STRATOSPHERIC FLAIL }
+  - { week: 3, type: reroll, flavor: DIGITIZE CONSCIOUSNESS } # 灰色斜体
+  - { week: 3, type: upgrade, name: INCREASE COIL RATE }
+  - { week: 3, type: upgrade, name: INCREASE COIL RATE }
+  - { week: 3, type: upgrade, name: BLACKOUT PROTOCOL }
+  - { week: 3, type: upgrade, name: BLACKOUT SURGE AGREEMENT }
+  - { week: 3, type: upgrade, name: RAPID REGENERATION }
+reward_ledger:
+  # points = 行に表示された合計点（count と掛けない）。合計 = 2320。
+  - { name: BOHEMIAN, count: 1, points: 250 }
+  - { name: OBSESSIVE, count: 25, points: 200 }
+  - { name: CALAMARI FRITTI, count: 1, points: 200 }
+  - { name: DOUBLE RAINBOW, count: 5, points: 175 }
+  - { name: HARD CHEESE, count: 16, points: 160 }
+  - { name: LASER DISCO, count: 5, points: 150 }
+  - { name: CHEF'S KISS, count: 7, points: 140 }
+  - { name: ANNIHILATION, count: 23, points: 115 }
+  - { name: COMMANDO, count: 1, points: 100 }
+  - { name: MINT CONDITION, count: 4, points: 100 }
+  - { name: MR. CREOSOTE, count: 1, points: 100 }
+  - { name: CONSERVATION, count: 2, points: 80 }
+  - { name: DISCIPLINE, count: 6, points: 60 }
+  - { name: NO ESCAPE, count: 2, points: 60 }
+  - { name: TOASTY, count: 4, points: 60 }
+  - { name: NOT SO FAST, count: 6, points: 60 }
+  - { name: EGGS ROYALE, count: 1, points: 50 }
+  - { name: SEAFOOD PLATTER, count: 1, points: 50 }
+  - { name: BUSY DAY, count: 1, points: 40 }
+  - { name: GONNAHAVEMESOMEFUN, count: 2, points: 40 }
+  - { name: CLOSE SHAVE, count: 1, points: 30 }
+  - { name: SORTED, count: 1, points: 30 }
+  - { name: COMPLETIST, count: 5, points: 25 }
+  - { name: HARD BOILED, count: 1, points: 25 }
+  - { name: CARPET BOMBER, count: 1, points: 20 }
