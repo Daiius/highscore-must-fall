@@ -16,7 +16,7 @@
 ## PR
 
 - **PR 本文は [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md) の構造に従う**（正典）。セクション: `概要` / `実装` / `設計上の判断`(任意) / `検証`。
-- 作成は **`/create-pr` スキル**を使う（現在ブランチの diff・コミットからテンプレを埋めて `gh pr create`）。`gh` の `--body` はテンプレを自動適用しないため、スキルがテンプレを読んで本文を組み立てる。
+- 作成は **`/create-draft-pr` スキル**を使う（現在ブランチの diff・コミットからテンプレを埋めて `gh pr create --draft`）。既定でドラフト作成し、準備でき次第 `gh pr ready` で上げる。`gh` の `--body` はテンプレを自動適用しないため、スキルがテンプレを読んで本文を組み立てる。
 - タイトルは Conventional Commits 形式（例 `feat(shared): ...`）。base は既定ブランチ（通常 `main`）。
 - **`検証` セクションは実行済みのゲートだけにチェックを入れる**（未実行を「済」と偽らない）。最低限 typecheck / biome check / test。
 - Co-Author / PR バイラインは `settings.json` の `attribution` で抑制済み（本文へ署名を書かない）。
