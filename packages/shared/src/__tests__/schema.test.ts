@@ -44,6 +44,30 @@ describe('RunRecordSchema', () => {
     const ok = { ...sampleRun(), schema_version: SCHEMA_VERSION }
     expect(RunRecordSchema.safeParse(ok).success).toBe(true)
   })
+
+  it('INT 範囲を超えるコア指標は error（DB の INT 格納範囲に合わせる）', () => {
+    const input = sampleRun()
+    const bad = { ...input, result: { ...input.result, final_score: 2_147_483_648 } }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+    const ok = { ...input, result: { ...input.result, final_score: 2_147_483_647 } }
+    expect(RunRecordSchema.safeParse(ok).success).toBe(true)
+  })
+
+  it('191 文字を超える game は error（varchar(191) に合わせる）', () => {
+    const bad = { ...sampleRun(), game: 'A'.repeat(192) }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('正規化後 191 文字を超える upgrade 名は error', () => {
+    const input = sampleRun()
+    const bad = {
+      ...input,
+      upgrade_history: [
+        { entry_type: 'upgrade', week_index: 1, order_in_week: 1, name: 'A'.repeat(192) },
+      ],
+    }
+    expect(RunRecordSchema.safeParse(bad).success).toBe(false)
+  })
 })
 
 describe('UpgradeHistoryEntrySchema', () => {
