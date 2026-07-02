@@ -37,6 +37,8 @@ catalog:
   "@vitejs/plugin-react": ^5.0.0
   tailwindcss: ^4.1.0
   "@tailwindcss/vite": ^4.1.0
+  # グラフ（記述分析。prd/06）。
+  recharts: ^2.15.4
 
   # --- テスト ---
   vitest: ^3.0.0

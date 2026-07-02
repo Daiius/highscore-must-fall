@@ -13,6 +13,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth, isDevLoginEnabled, webOrigin } from './lib/auth'
 import type { AppEnv } from './lib/context'
+import { analysisRoute } from './routes/analysis'
 import { catalogRoute } from './routes/catalog'
 import { ingestRoute } from './routes/ingest'
 import { runsRoute } from './routes/runs'
@@ -72,8 +73,12 @@ const route = app
   .route('/api/ingest', ingestRoute)
   .route('/api/runs', runsRoute)
   .route('/api/catalog', catalogRoute)
+  .route('/api/analysis', analysisRoute)
 
 /** RPC 型（web の hono/client から参照する）。 */
 export type AppType = typeof route
 
 export { hc } from 'hono/client'
+// RPC 応答型が参照する内部型を package 経由で名前解決できるよう re-export する
+// （web 側の hono RPC client 型が TS2742「型に名前が付けられない」になるのを防ぐ）。
+export type { RunStatus } from './lib/runs'
