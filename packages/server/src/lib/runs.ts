@@ -64,14 +64,29 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
     .limit(1)
   if (alias[0]?.id) return alias[0].id
 
-  const id = randomUUID()
-  await tx.insert(upgradeCatalog).values({
-    id,
-    canonicalKey: key,
-    displayName: key, // 正規形を表示にもそのまま使う（別の表示名を持たない）。
-    verified: false, // unverified 自動登録。人手 verify/マージで育てる。
-    firstSeenRunId: runId,
-  })
+  // 原子的な insert-or-get。同一未知名を含む run が同時保存されても一意制約違反で落とさない。
+  // 競合時の set は canonical_key 自身への no-op（既存の display_name/first_seen を壊さない）。
+  await tx
+    .insert(upgradeCatalog)
+    .values({
+      id: randomUUID(),
+      canonicalKey: key,
+      displayName: key, // 正規形を表示にもそのまま使う（別の表示名を持たない）。
+      verified: false, // unverified 自動登録。人手 verify/マージで育てる。
+      firstSeenRunId: runId,
+    })
+    .onDuplicateKeyUpdate({ set: { canonicalKey: key } })
+  // 再取得はロック読み取り（FOR UPDATE）。REPEATABLE READ の非ロック読みはトランザクション開始時
+  // スナップショットを見るため、同時保存で他トランザクションが commit した行が見えず空になり得る。
+  const inserted = await tx
+    .select({ id: upgradeCatalog.id })
+    .from(upgradeCatalog)
+    .where(eq(upgradeCatalog.canonicalKey, key))
+    .limit(1)
+    .for('update')
+  // 直前の upsert 後なので必ず存在する（無ければ FK 違反を招くため即エラー）。
+  const id = inserted[0]?.id
+  if (!id) throw new Error(`upgrade_catalog upsert failed for key: ${key}`)
   return id
 }
 
@@ -91,14 +106,26 @@ async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promi
     .limit(1)
   if (alias[0]?.id) return alias[0].id
 
-  const id = randomUUID()
-  await tx.insert(rewardCatalog).values({
-    id,
-    canonicalKey: key,
-    displayName: key,
-    verified: false,
-    firstSeenRunId: runId,
-  })
+  // 原子的な insert-or-get（upgrade 側と同じ理由・同じ形）。
+  await tx
+    .insert(rewardCatalog)
+    .values({
+      id: randomUUID(),
+      canonicalKey: key,
+      displayName: key,
+      verified: false,
+      firstSeenRunId: runId,
+    })
+    .onDuplicateKeyUpdate({ set: { canonicalKey: key } })
+  // 再取得はロック読み取り（upgrade 側と同じ理由）。
+  const inserted = await tx
+    .select({ id: rewardCatalog.id })
+    .from(rewardCatalog)
+    .where(eq(rewardCatalog.canonicalKey, key))
+    .limit(1)
+    .for('update')
+  const id = inserted[0]?.id
+  if (!id) throw new Error(`reward_catalog upsert failed for key: ${key}`)
   return id
 }
 
