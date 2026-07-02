@@ -30,6 +30,9 @@ services:
       - .env.server
     environment:
       TZ: "Asia/Tokyo"
+      # dev ログインバイパスと CORS の既定。.env.server で上書き可能。
+      NODE_ENV: "development"
+      WEB_ORIGIN: "http://localhost:5173"
     command: pnpm --filter server dev
     depends_on:
       db:
