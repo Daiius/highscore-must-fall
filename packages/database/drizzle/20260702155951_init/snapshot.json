@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "mysql",
-  "id": "150ced6e-25d0-45c2-b353-1b790a2966bc",
+  "id": "0decc463-a809-4198-b9d8-03fe14a6783e",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -2088,6 +2088,12 @@
       "name": "catalog_alias_kind_target_chk",
       "entityType": "checks",
       "table": "catalog_alias"
+    },
+    {
+      "value": "(`upgrade_entry`.`entry_type` = 'upgrade' and `upgrade_entry`.`upgrade_catalog_id` is not null and `upgrade_entry`.`upgrade_order` is not null)\n        or (`upgrade_entry`.`entry_type` = 'reroll' and `upgrade_entry`.`upgrade_catalog_id` is null and `upgrade_entry`.`upgrade_order` is null)",
+      "name": "upgrade_entry_type_target_chk",
+      "entityType": "checks",
+      "table": "upgrade_entry"
     }
   ],
   "renames": []

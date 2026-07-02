@@ -222,6 +222,13 @@ export const upgradeEntry = mysqlTable(
       foreignColumns: [run.id, run.ownerId],
       name: 'upgrade_entry_run_owner_fkey',
     }).onDelete('cascade'),
+    // entry_type と catalog/order の対応を強制（prd/03 §3.3）:
+    // upgrade は upgrade_catalog_id・upgrade_order を持ち、reroll は両方 null。
+    check(
+      'upgrade_entry_type_target_chk',
+      sql`(${t.entryType} = 'upgrade' and ${t.upgradeCatalogId} is not null and ${t.upgradeOrder} is not null)
+        or (${t.entryType} = 'reroll' and ${t.upgradeCatalogId} is null and ${t.upgradeOrder} is null)`,
+    ),
   ],
 )
 

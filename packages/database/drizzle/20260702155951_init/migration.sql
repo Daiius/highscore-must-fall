@@ -116,7 +116,9 @@ CREATE TABLE `upgrade_entry` (
 	`entry_type` enum('upgrade','reroll') NOT NULL,
 	`upgrade_catalog_id` varchar(36),
 	`upgrade_order` int,
-	`flavor_text` text
+	`flavor_text` text,
+	CONSTRAINT `upgrade_entry_type_target_chk` CHECK((`upgrade_entry`.`entry_type` = 'upgrade' and `upgrade_entry`.`upgrade_catalog_id` is not null and `upgrade_entry`.`upgrade_order` is not null)
+        or (`upgrade_entry`.`entry_type` = 'reroll' and `upgrade_entry`.`upgrade_catalog_id` is null and `upgrade_entry`.`upgrade_order` is null))
 );
 --> statement-breakpoint
 CREATE TABLE `user` (
