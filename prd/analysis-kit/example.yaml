@@ -1,0 +1,46 @@
+# 正解例（sample-01 / prd/01-game-domain.md §8）。この記法にならって template.yaml を埋める。
+# 自己整合: reward_ledger の points 合計 = 1208 = result.apocalypse_bonus。
+game: UTOPIA MUST FALL
+result:
+  days_survived: 10
+  final_score: 143161
+  aliens_defeated: 1336
+  nukes_launched: 3
+  apocalypse_bonus: 1208 # = REWARD LEDGER の ☆ 合計
+upgrade_history:
+  # WEEK 1（画面の並び順のまま。DEPLOY LASER WATCHTOWER は連続で 2 回取得 → そのまま重複）
+  - { week: 1, type: upgrade, name: NUCLEAR WEAPONS LAB }
+  - { week: 1, type: upgrade, name: RATIONED WARHEADS }
+  - { week: 1, type: upgrade, name: INCREASE PRODUCTION }
+  - { week: 1, type: upgrade, name: ARC FLAIL }
+  - { week: 1, type: upgrade, name: INCREASE FIRE RATE }
+  - { week: 1, type: upgrade, name: REGENERATIVE SHIELD }
+  - { week: 1, type: upgrade, name: BLACKOUT PROTOCOL }
+  - { week: 1, type: upgrade, name: INSTITUTE OF AUTOMATION }
+  - { week: 1, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 1, type: upgrade, name: DEPLOY LASER WATCHTOWER }
+  - { week: 1, type: upgrade, name: PLASMA PHYSICS LAB }
+  - { week: 1, type: upgrade, name: OPTIMIZED OPERATIONS }
+  # WEEK 2（灰色斜体の行はリロール → type: reroll で flavor に。色付きの行は type: upgrade）
+  - { week: 2, type: upgrade, name: ADVANCED MATERIALS LAB }
+  - { week: 2, type: reroll, flavor: DIGITIZE CONSCIOUSNESS } # 灰色斜体
+  - { week: 2, type: upgrade, name: EXTENDED FLAIL }
+  - { week: 2, type: upgrade, name: CONTEXT SWITCH }
+  - { week: 2, type: reroll, flavor: WELCOMING CEREMONY } # 灰色斜体
+  - { week: 2, type: upgrade, name: OFFENSIVE INNOVATION CENTER }
+  - { week: 2, type: upgrade, name: COBALT COIL GUN }
+reward_ledger:
+  # points = 行に表示された合計点（count と掛けない）。合計 = 1208。
+  - { name: BOHEMIAN, count: 1, points: 250 }
+  - { name: OBSESSIVE, count: 21, points: 168 }
+  - { name: CHEF'S KISS, count: 7, points: 140 }
+  - { name: CONSERVATION, count: 3, points: 120 }
+  - { name: NO ESCAPE, count: 3, points: 90 }
+  - { name: LASER DISCO, count: 3, points: 90 }
+  - { name: DISCIPLINE, count: 7, points: 70 }
+  - { name: ANNIHILATION, count: 13, points: 65 }
+  - { name: COMPLETIST, count: 11, points: 55 }
+  - { name: MINT CONDITION, count: 2, points: 50 }
+  - { name: GONNAHAVEMESOMEFUN, count: 2, points: 40 }
+  - { name: HARD CHEESE, count: 4, points: 40 }
+  - { name: CLOSE SHAVE, count: 1, points: 30 }

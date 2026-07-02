@@ -1,0 +1,19 @@
+# Utopia Must Fall リザルト記録テンプレート。スクショを読み、この形・キー名のまま埋める。
+# 記法の実例は example.yaml を参照（reroll の書き方・points の意味を必ず確認すること）。
+# 読み取れない値は憶測せず null にする。
+game: UTOPIA MUST FALL
+result:
+  days_survived: # 結果画面 DAYS SURVIVED
+  final_score: # FINAL SCORE
+  aliens_defeated: # ALIENS DEFEATED
+  nukes_launched: # NUKES LAUNCHED
+  apocalypse_bonus: # APOCALYPSE BONUS = REWARD LEDGER の ☆ 合計
+upgrade_history:
+  # UPGRADE HISTORY を週ごと・画面の並び順のまま全行。名前は綴りそのまま、同名の連続もそのまま重複させる。
+  # 灰色斜体の行 = リロール → { week: N, type: reroll, flavor: <その灰色テキスト> }
+  # 色付きの行   = 通常     → { week: N, type: upgrade, name: <名前> }
+  - { week: 1, type: upgrade, name: }
+reward_ledger:
+  # 各行 = 報酬名 / count(○× の回数) / points。
+  # points = 行に表示された数値（その報酬の合計点）。count と掛けない。全 points の和 = apocalypse_bonus。
+  - { name: , count: , points: }
