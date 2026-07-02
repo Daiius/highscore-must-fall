@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "mysql",
-  "id": "ab7a441b-b34a-4e16-8acb-2a926c6c38b1",
+  "id": "b316bb3f-d88f-42e7-ad0a-a558b7091a1c",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -266,7 +266,7 @@
     },
     {
       "type": "varchar(36)",
-      "notNull": true,
+      "notNull": false,
       "autoIncrement": false,
       "default": null,
       "onUpdateNow": false,
@@ -274,7 +274,21 @@
       "charSet": null,
       "collation": null,
       "generated": null,
-      "name": "catalog_id",
+      "name": "upgrade_catalog_id",
+      "entityType": "columns",
+      "table": "catalog_alias"
+    },
+    {
+      "type": "varchar(36)",
+      "notNull": false,
+      "autoIncrement": false,
+      "default": null,
+      "onUpdateNow": false,
+      "onUpdateNowFsp": null,
+      "charSet": null,
+      "collation": null,
+      "generated": null,
+      "name": "reward_catalog_id",
       "entityType": "columns",
       "table": "catalog_alias"
     },
@@ -1565,11 +1579,7 @@
     {
       "columns": [
         {
-          "value": "catalog_kind",
-          "isExpression": false
-        },
-        {
-          "value": "catalog_id",
+          "value": "upgrade_catalog_id",
           "isExpression": false
         }
       ],
@@ -1578,7 +1588,23 @@
       "algorithm": null,
       "lock": null,
       "nameExplicit": true,
-      "name": "catalog_alias_target_idx",
+      "name": "catalog_alias_upgrade_target_idx",
+      "entityType": "indexes",
+      "table": "catalog_alias"
+    },
+    {
+      "columns": [
+        {
+          "value": "reward_catalog_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "using": null,
+      "algorithm": null,
+      "lock": null,
+      "nameExplicit": true,
+      "name": "catalog_alias_reward_target_idx",
       "entityType": "indexes",
       "table": "catalog_alias"
     },
@@ -1871,6 +1897,36 @@
     },
     {
       "columns": [
+        "upgrade_catalog_id"
+      ],
+      "tableTo": "upgrade_catalog",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "catalog_alias_upgrade_catalog_id_upgrade_catalog_id_fkey",
+      "entityType": "fks",
+      "table": "catalog_alias"
+    },
+    {
+      "columns": [
+        "reward_catalog_id"
+      ],
+      "tableTo": "reward_catalog",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "catalog_alias_reward_catalog_id_reward_catalog_id_fkey",
+      "entityType": "fks",
+      "table": "catalog_alias"
+    },
+    {
+      "columns": [
         "reward_catalog_id"
       ],
       "tableTo": "reward_catalog",
@@ -1996,6 +2052,12 @@
       "name": "upgrade_entry_run_owner_fkey",
       "entityType": "fks",
       "table": "upgrade_entry"
+    },
+    {
+      "value": "(`catalog_alias`.`catalog_kind` = 'upgrade' and `catalog_alias`.`upgrade_catalog_id` is not null and `catalog_alias`.`reward_catalog_id` is null)\n        or (`catalog_alias`.`catalog_kind` = 'reward' and `catalog_alias`.`reward_catalog_id` is not null and `catalog_alias`.`upgrade_catalog_id` is null)",
+      "name": "catalog_alias_kind_target_chk",
+      "entityType": "checks",
+      "table": "catalog_alias"
     }
   ],
   "renames": []

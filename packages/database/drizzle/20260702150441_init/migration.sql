@@ -17,9 +17,12 @@ CREATE TABLE `account` (
 CREATE TABLE `catalog_alias` (
 	`id` varchar(36) PRIMARY KEY,
 	`catalog_kind` enum('upgrade','reward') NOT NULL,
-	`catalog_id` varchar(36) NOT NULL,
+	`upgrade_catalog_id` varchar(36),
+	`reward_catalog_id` varchar(36),
 	`alias_key` varchar(191) NOT NULL,
-	CONSTRAINT `catalog_alias_kind_key_uidx` UNIQUE INDEX(`catalog_kind`,`alias_key`)
+	CONSTRAINT `catalog_alias_kind_key_uidx` UNIQUE INDEX(`catalog_kind`,`alias_key`),
+	CONSTRAINT `catalog_alias_kind_target_chk` CHECK((`catalog_alias`.`catalog_kind` = 'upgrade' and `catalog_alias`.`upgrade_catalog_id` is not null and `catalog_alias`.`reward_catalog_id` is null)
+        or (`catalog_alias`.`catalog_kind` = 'reward' and `catalog_alias`.`reward_catalog_id` is not null and `catalog_alias`.`upgrade_catalog_id` is null))
 );
 --> statement-breakpoint
 CREATE TABLE `reward_catalog` (
@@ -137,7 +140,8 @@ CREATE TABLE `verification` (
 );
 --> statement-breakpoint
 CREATE INDEX `account_user_id_idx` ON `account` (`user_id`);--> statement-breakpoint
-CREATE INDEX `catalog_alias_target_idx` ON `catalog_alias` (`catalog_kind`,`catalog_id`);--> statement-breakpoint
+CREATE INDEX `catalog_alias_upgrade_target_idx` ON `catalog_alias` (`upgrade_catalog_id`);--> statement-breakpoint
+CREATE INDEX `catalog_alias_reward_target_idx` ON `catalog_alias` (`reward_catalog_id`);--> statement-breakpoint
 CREATE INDEX `reward_entry_run_idx` ON `reward_entry` (`run_id`);--> statement-breakpoint
 CREATE INDEX `reward_entry_owner_catalog_idx` ON `reward_entry` (`owner_id`,`reward_catalog_id`);--> statement-breakpoint
 CREATE INDEX `run_owner_played_at_idx` ON `run` (`owner_id`,`played_at`);--> statement-breakpoint
@@ -151,6 +155,8 @@ CREATE INDEX `upgrade_entry_catalog_week_idx` ON `upgrade_entry` (`upgrade_catal
 CREATE INDEX `upgrade_entry_owner_catalog_idx` ON `upgrade_entry` (`owner_id`,`upgrade_catalog_id`);--> statement-breakpoint
 CREATE INDEX `verification_identifier_idx` ON `verification` (`identifier`);--> statement-breakpoint
 ALTER TABLE `account` ADD CONSTRAINT `account_user_id_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE `catalog_alias` ADD CONSTRAINT `catalog_alias_upgrade_catalog_id_upgrade_catalog_id_fkey` FOREIGN KEY (`upgrade_catalog_id`) REFERENCES `upgrade_catalog`(`id`) ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE `catalog_alias` ADD CONSTRAINT `catalog_alias_reward_catalog_id_reward_catalog_id_fkey` FOREIGN KEY (`reward_catalog_id`) REFERENCES `reward_catalog`(`id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `reward_entry` ADD CONSTRAINT `reward_entry_reward_catalog_id_reward_catalog_id_fkey` FOREIGN KEY (`reward_catalog_id`) REFERENCES `reward_catalog`(`id`) ON DELETE RESTRICT;--> statement-breakpoint
 ALTER TABLE `reward_entry` ADD CONSTRAINT `reward_entry_run_owner_fkey` FOREIGN KEY (`run_id`,`owner_id`) REFERENCES `run`(`id`,`owner_id`) ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE `run` ADD CONSTRAINT `run_owner_id_user_id_fkey` FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`) ON DELETE CASCADE;--> statement-breakpoint

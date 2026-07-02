@@ -13,8 +13,10 @@
 //     owner_id はこの user.id を指す FK（ユーザー削除で own データを cascade 削除）。
 
 import { randomUUID } from 'node:crypto'
+import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   datetime,
   foreignKey,
   index,
@@ -282,19 +284,38 @@ export const rewardCatalog = mysqlTable(
 
 // --- catalog_alias（別名→正規エントリの対応・マージ用）。prd/03 §3.6。 --------------
 // upgrade/reward は別名前空間なので (catalog_kind, alias_key) で一意にする。
-// catalog_id は kind により upgrade/reward いずれかを指すため DB レベルの FK は張らない。
+// 統合先は種別により upgrade/reward いずれか。単一の polymorphic 列だと FK を張れず
+// 「存在しない ID・異種カタログ ID」を保存できてしまうため、種別ごとの nullable 参照列に
+// 分け、それぞれ実 FK を張る。CHECK で「kind に対応する列だけが非 null」を強制する。
+// カタログ削除時は対応する alias も無意味になるため cascade。
 
 export const catalogAlias = mysqlTable(
   'catalog_alias',
   {
     id: id(),
     catalogKind: mysqlEnum('catalog_kind', CATALOG_KINDS).notNull(),
-    catalogId: varchar('catalog_id', { length: 36 }).notNull(), // 統合先の正規エントリ
+    // kind=upgrade のとき非 null（reward は null）。統合先の正規エントリ。
+    upgradeCatalogId: varchar('upgrade_catalog_id', { length: 36 }).references(
+      () => upgradeCatalog.id,
+      { onDelete: 'cascade' },
+    ),
+    // kind=reward のとき非 null（upgrade は null）。
+    rewardCatalogId: varchar('reward_catalog_id', { length: 36 }).references(
+      () => rewardCatalog.id,
+      { onDelete: 'cascade' },
+    ),
     aliasKey: varchar('alias_key', { length: 191 }).notNull(), // 別名の正規化キー
   },
   (t) => [
     uniqueIndex('catalog_alias_kind_key_uidx').on(t.catalogKind, t.aliasKey),
-    index('catalog_alias_target_idx').on(t.catalogKind, t.catalogId),
+    index('catalog_alias_upgrade_target_idx').on(t.upgradeCatalogId),
+    index('catalog_alias_reward_target_idx').on(t.rewardCatalogId),
+    // 種別と非 null 列の整合を強制（upgrade↔upgrade_catalog_id / reward↔reward_catalog_id）。
+    check(
+      'catalog_alias_kind_target_chk',
+      sql`(${t.catalogKind} = 'upgrade' and ${t.upgradeCatalogId} is not null and ${t.rewardCatalogId} is null)
+        or (${t.catalogKind} = 'reward' and ${t.rewardCatalogId} is not null and ${t.upgradeCatalogId} is null)`,
+    ),
   ],
 )
 

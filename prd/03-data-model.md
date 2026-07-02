@@ -141,9 +141,14 @@ RewardEntry { name: string, count: int, points: int }
 |---|---|---|
 | `id` | string(PK) | |
 | `catalog_kind` | enum(`upgrade`,`reward`) | |
-| `catalog_id` | string(FK) | 統合先の正規エントリ |
-| `alias_key` | string(unique) | 別名の正規化キー |
+| `upgrade_catalog_id` | string(FK)? | `kind=upgrade` のとき非 null（統合先） |
+| `reward_catalog_id` | string(FK)? | `kind=reward` のとき非 null（統合先） |
+| `alias_key` | string(unique) | 別名の正規化キー（`(catalog_kind, alias_key)` で一意） |
 
+> 統合先は種別により upgrade/reward いずれか。単一 polymorphic 列だと実 FK を張れず
+> 「存在しない/異種の ID」を保存できてしまうため、種別ごとの nullable 参照列に分けて実 FK を張り、
+> `kind` に対応する列だけが非 null であることを **CHECK 制約**で強制する。カタログ削除は cascade。
+>
 > マージ操作: B を A に統合 = B 配下の `*_entry` を A に付け替え、B の `canonical_key` を A の alias として登録、B を削除。
 
 ### 3.7 `run_image`

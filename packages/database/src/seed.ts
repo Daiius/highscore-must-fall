@@ -9,23 +9,26 @@ import { normalizeName } from 'shared'
 import { client, db, rewardCatalog, upgradeCatalog } from './index'
 
 // prd/01 §7.1（WEEK1/WEEK2 由来・計16）。DEPLOY LASER WATCHTOWER は重複出現だが1エントリ。
-const UPGRADE_NAMES = [
-  'NUCLEAR WEAPONS LAB',
-  'RATIONED WARHEADS',
-  'INCREASE PRODUCTION',
-  'ARC FLAIL',
-  'INCREASE FIRE RATE',
-  'REGENERATIVE SHIELD',
-  'BLACKOUT PROTOCOL',
-  'INSTITUTE OF AUTOMATION',
-  'DEPLOY LASER WATCHTOWER',
-  'PLASMA PHYSICS LAB',
-  'OPTIMIZED OPERATIONS',
-  'ADVANCED MATERIALS LAB',
-  'EXTENDED FLAIL',
-  'CONTEXT SWITCH',
-  'OFFENSIVE INNOVATION CENTER',
-  'COBALT COIL GUN',
+// kind 既定は contract。CONTEXT SWITCH のみ opportunity_upgrade（OU。ラン跨ぎ恒久解禁の
+// メタ進行。prd/03 §3.5・.claude/rules/database.md）。seed はこの既知分類を正典として与える。
+type UpgradeKind = 'contract' | 'opportunity_upgrade'
+const UPGRADES: readonly { name: string; kind: UpgradeKind }[] = [
+  { name: 'NUCLEAR WEAPONS LAB', kind: 'contract' },
+  { name: 'RATIONED WARHEADS', kind: 'contract' },
+  { name: 'INCREASE PRODUCTION', kind: 'contract' },
+  { name: 'ARC FLAIL', kind: 'contract' },
+  { name: 'INCREASE FIRE RATE', kind: 'contract' },
+  { name: 'REGENERATIVE SHIELD', kind: 'contract' },
+  { name: 'BLACKOUT PROTOCOL', kind: 'contract' },
+  { name: 'INSTITUTE OF AUTOMATION', kind: 'contract' },
+  { name: 'DEPLOY LASER WATCHTOWER', kind: 'contract' },
+  { name: 'PLASMA PHYSICS LAB', kind: 'contract' },
+  { name: 'OPTIMIZED OPERATIONS', kind: 'contract' },
+  { name: 'ADVANCED MATERIALS LAB', kind: 'contract' },
+  { name: 'EXTENDED FLAIL', kind: 'contract' },
+  { name: 'CONTEXT SWITCH', kind: 'opportunity_upgrade' },
+  { name: 'OFFENSIVE INNOVATION CENTER', kind: 'contract' },
+  { name: 'COBALT COIL GUN', kind: 'contract' },
 ]
 
 // prd/01 §7.2（計13）。
@@ -45,23 +48,36 @@ const REWARD_NAMES = [
   'CLOSE SHAVE',
 ]
 
-/** 名前配列を canonical_key で重複排除した seed 行に変換する。 */
-function toCatalogRows(names: readonly string[]) {
+/** upgrade を canonical_key で重複排除した seed 行（kind 付き）に変換する。 */
+function toUpgradeRows(items: readonly { name: string; kind: UpgradeKind }[]) {
+  // 正規形は表示にもそのまま使う（別の表示名を持たない）。seed は人手キュレーション済み＝verified。
+  const byKey = new Map<string, { canonicalKey: string; displayName: string; kind: UpgradeKind }>()
+  for (const { name, kind } of items) {
+    const key = normalizeName(name)
+    byKey.set(key, { canonicalKey: key, displayName: key, kind })
+  }
+  return [...byKey.values()].map((row) => ({ ...row, verified: true }))
+}
+
+/** reward 名を canonical_key で重複排除した seed 行に変換する。 */
+function toRewardRows(names: readonly string[]) {
   const keys = new Set<string>()
   for (const name of names) keys.add(normalizeName(name))
-  // 正規形は表示にもそのまま使う（別の表示名を持たない）。seed は人手キュレーション済み＝verified。
   return [...keys].map((key) => ({ canonicalKey: key, displayName: key, verified: true }))
 }
 
 async function main() {
-  const upgradeRows = toCatalogRows(UPGRADE_NAMES)
-  const rewardRows = toCatalogRows(REWARD_NAMES)
+  const upgradeRows = toUpgradeRows(UPGRADES)
+  const rewardRows = toRewardRows(REWARD_NAMES)
 
   for (const row of upgradeRows) {
     await db
       .insert(upgradeCatalog)
       .values(row)
-      .onDuplicateKeyUpdate({ set: { displayName: row.displayName, verified: true } })
+      // kind も seed を正典として上書き（再 seed で既知分類のドリフトを戻す）。
+      .onDuplicateKeyUpdate({
+        set: { displayName: row.displayName, kind: row.kind, verified: true },
+      })
   }
   for (const row of rewardRows) {
     await db
