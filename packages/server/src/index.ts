@@ -9,5 +9,4 @@
 // TODO(impl): スキャフォルド段階のため未着手。
 
 const port = Number(process.env.PORT ?? 4000)
-// biome-ignore lint/suspicious/noConsole: scaffold placeholder
 console.log(`[server] scaffold. will listen on ${port}`)
