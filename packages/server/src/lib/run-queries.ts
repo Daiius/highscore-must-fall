@@ -47,13 +47,17 @@ function selectRunList(ownerId: string, params: ListRunsParams) {
   const where = params.status
     ? and(eq(run.ownerId, ownerId), eq(run.status, params.status))
     : eq(run.ownerId, ownerId)
-  return db
-    .select(runListColumns)
-    .from(run)
-    .where(where)
-    .orderBy(desc(run.playedAt), desc(run.createdAt))
-    .limit(params.limit)
-    .offset(params.offset)
+  return (
+    db
+      .select(runListColumns)
+      .from(run)
+      .where(where)
+      // id を最終 tie-breaker に（played_at/created_at が同値でもページ間で順序を確定させ、
+      // offset ページングでの重複/欠落を防ぐ）。
+      .orderBy(desc(run.playedAt), desc(run.createdAt), desc(run.id))
+      .limit(params.limit)
+      .offset(params.offset)
+  )
 }
 
 /** owner の run を新しい順に一覧（総件数付き）。 */
