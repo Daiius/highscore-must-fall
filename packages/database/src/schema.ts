@@ -213,7 +213,13 @@ export const upgradeEntry = mysqlTable(
     flavorText: text('flavor_text'),
   },
   (t) => [
-    index('upgrade_entry_run_idx').on(t.runId),
+    // 週内位置の一意性（run 内で (week, 週内順) が重複すると取得順が復元不能）。
+    // (run_id) 単独索引はこの複合 UNIQUE の左端で兼ねられるため統合。shared でも同値を
+    // error 検証済み（validate.ts）だが、DB でも多層防御として強制する（prd/03 §1・§3.3）。
+    uniqueIndex('upgrade_entry_run_week_order_uidx').on(t.runId, t.weekIndex, t.orderInWeek),
+    // アップグレード通し番号の run 内一意性。reroll 行は upgrade_order=NULL で、MySQL の
+    // UNIQUE は NULL を重複扱いしないため除外される（upgrade 行のみ実効）。
+    uniqueIndex('upgrade_entry_run_upgrade_order_uidx').on(t.runId, t.upgradeOrder),
     index('upgrade_entry_catalog_week_idx').on(t.upgradeCatalogId, t.weekIndex),
     index('upgrade_entry_owner_catalog_idx').on(t.ownerId, t.upgradeCatalogId),
     // (run_id, owner_id) → run(id, owner_id)。owner 一致を強制しつつ run 削除で cascade。

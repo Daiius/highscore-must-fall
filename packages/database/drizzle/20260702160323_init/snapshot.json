@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "mysql",
-  "id": "0decc463-a809-4198-b9d8-03fe14a6783e",
+  "id": "594a79dc-4ab6-47d1-832c-c1e26a6a8307",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -1813,14 +1813,42 @@
         {
           "value": "run_id",
           "isExpression": false
+        },
+        {
+          "value": "week_index",
+          "isExpression": false
+        },
+        {
+          "value": "order_in_week",
+          "isExpression": false
         }
       ],
-      "isUnique": false,
+      "isUnique": true,
       "using": null,
       "algorithm": null,
       "lock": null,
       "nameExplicit": true,
-      "name": "upgrade_entry_run_idx",
+      "name": "upgrade_entry_run_week_order_uidx",
+      "entityType": "indexes",
+      "table": "upgrade_entry"
+    },
+    {
+      "columns": [
+        {
+          "value": "run_id",
+          "isExpression": false
+        },
+        {
+          "value": "upgrade_order",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "using": null,
+      "algorithm": null,
+      "lock": null,
+      "nameExplicit": true,
+      "name": "upgrade_entry_run_upgrade_order_uidx",
       "entityType": "indexes",
       "table": "upgrade_entry"
     },

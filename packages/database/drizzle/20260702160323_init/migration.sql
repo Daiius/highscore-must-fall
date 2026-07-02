@@ -117,6 +117,8 @@ CREATE TABLE `upgrade_entry` (
 	`upgrade_catalog_id` varchar(36),
 	`upgrade_order` int,
 	`flavor_text` text,
+	CONSTRAINT `upgrade_entry_run_week_order_uidx` UNIQUE INDEX(`run_id`,`week_index`,`order_in_week`),
+	CONSTRAINT `upgrade_entry_run_upgrade_order_uidx` UNIQUE INDEX(`run_id`,`upgrade_order`),
 	CONSTRAINT `upgrade_entry_type_target_chk` CHECK((`upgrade_entry`.`entry_type` = 'upgrade' and `upgrade_entry`.`upgrade_catalog_id` is not null and `upgrade_entry`.`upgrade_order` is not null)
         or (`upgrade_entry`.`entry_type` = 'reroll' and `upgrade_entry`.`upgrade_catalog_id` is null and `upgrade_entry`.`upgrade_order` is null))
 );
@@ -152,7 +154,6 @@ CREATE INDEX `run_owner_status_idx` ON `run` (`owner_id`,`status`);--> statement
 CREATE INDEX `run_image_run_idx` ON `run_image` (`run_id`);--> statement-breakpoint
 CREATE INDEX `run_image_owner_run_idx` ON `run_image` (`owner_id`,`run_id`);--> statement-breakpoint
 CREATE INDEX `session_user_id_idx` ON `session` (`user_id`);--> statement-breakpoint
-CREATE INDEX `upgrade_entry_run_idx` ON `upgrade_entry` (`run_id`);--> statement-breakpoint
 CREATE INDEX `upgrade_entry_catalog_week_idx` ON `upgrade_entry` (`upgrade_catalog_id`,`week_index`);--> statement-breakpoint
 CREATE INDEX `upgrade_entry_owner_catalog_idx` ON `upgrade_entry` (`owner_id`,`upgrade_catalog_id`);--> statement-breakpoint
 CREATE INDEX `verification_identifier_idx` ON `verification` (`identifier`);--> statement-breakpoint
