@@ -29,10 +29,9 @@ services:
       - .env.database
       - .env.server
     environment:
+      # NODE_ENV / WEB_ORIGIN は .env.server（env_file）から注入する。
+      # compose の environment は env_file より優先されるため、ここに書くと .env.server で上書きできない。
       TZ: "Asia/Tokyo"
-      # dev ログインバイパスと CORS の既定。.env.server で上書き可能。
-      NODE_ENV: "development"
-      WEB_ORIGIN: "http://localhost:5173"
     command: pnpm --filter server dev
     depends_on:
       db:
