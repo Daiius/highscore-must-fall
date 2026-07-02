@@ -129,6 +129,33 @@ async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promi
   return id
 }
 
+/** 事前解決したカタログ id マップから必ず存在する id を引く（欠落は実装バグなので即エラー）。 */
+function mustGet(map: Map<string, string>, key: string): string {
+  const id = map.get(key)
+  if (!id) throw new Error(`catalog id not resolved for key: ${key}`)
+  return id
+}
+
+/** InnoDB のデッドロック(1213)・ロック待ちタイムアウト(1205)は限定的に再試行する。 */
+const RETRYABLE_ERRNOS = new Set([1213, 1205])
+
+async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const errno = (e as { errno?: number }).errno
+      if (errno !== undefined && RETRYABLE_ERRNOS.has(errno)) {
+        lastErr = e // 犠牲になった側はロールバック済み。runId 再利用で再試行して問題ない。
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastErr
+}
+
 /**
  * 検証済み RunRecord を保存する。呼び出し側は事前に shared で検証し、
  * confirmed なら error 無しを保証していること（ここでは DB 書き込みに専念する）。
@@ -139,75 +166,92 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
   const playedAt = input.playedAt ?? (record.played_at ? new Date(record.played_at) : new Date())
   const rerollCount = record.upgrade_history.filter((e) => e.entry_type === 'reroll').length
 
-  await db.transaction(async (tx) => {
-    // run（コア・ホット行）。
-    await tx.insert(run).values({
-      id: runId,
-      ownerId,
-      game: record.game,
-      playedAt,
-      status,
-      source,
-      schemaVersion: record.schema_version,
-      daysSurvived: record.result.days_survived,
-      finalScore: record.result.final_score,
-      aliensDefeated: record.result.aliens_defeated,
-      nukesLaunched: record.result.nukes_launched,
-      apocalypseBonus: record.result.apocalypse_bonus,
-      rerollCount,
-    })
+  // 未知カタログの upsert を run 間で決定的な順序（canonical_key 昇順・upgrade→reward）で行うために、
+  // 事前に名前を dedupe & ソートしておく。ロック取得順を全 run で揃え、逆順ロックによるデッドロックを防ぐ。
+  const upgradeKeys = [
+    ...new Set(record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : []))),
+  ].sort()
+  const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))].sort()
 
-    // run_payload（正規スキーマ全体を丸ごと温存）。
-    await tx.insert(runPayload).values({
-      runId,
-      ownerId,
-      rawPayload: record,
-      llmModel: input.llmModel,
-      sourceNote: input.sourceNote,
-    })
+  await withDeadlockRetry(() =>
+    db.transaction(async (tx) => {
+      // run（コア・ホット行）。カタログの firstSeenRunId FK があるため先に入れる。
+      await tx.insert(run).values({
+        id: runId,
+        ownerId,
+        game: record.game,
+        playedAt,
+        status,
+        source,
+        schemaVersion: record.schema_version,
+        daysSurvived: record.result.days_survived,
+        finalScore: record.result.final_score,
+        aliensDefeated: record.result.aliens_defeated,
+        nukesLaunched: record.result.nukes_launched,
+        apocalypseBonus: record.result.apocalypse_bonus,
+        rerollCount,
+      })
 
-    // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番）。
-    let upgradeOrder = 0
-    for (const entry of record.upgrade_history) {
-      if (entry.entry_type === 'upgrade') {
-        upgradeOrder += 1
-        const catalogId = await resolveUpgradeCatalogId(tx, entry.name, runId)
-        await tx.insert(upgradeEntry).values({
+      // run_payload（正規スキーマ全体を丸ごと温存）。
+      await tx.insert(runPayload).values({
+        runId,
+        ownerId,
+        rawPayload: record,
+        llmModel: input.llmModel,
+        sourceNote: input.sourceNote,
+      })
+
+      // カタログを決定的順序で解決して id マップを作る（ここでロックが確定する）。
+      const upgradeIdByKey = new Map<string, string>()
+      for (const key of upgradeKeys) {
+        upgradeIdByKey.set(key, await resolveUpgradeCatalogId(tx, key, runId))
+      }
+      const rewardIdByKey = new Map<string, string>()
+      for (const key of rewardKeys) {
+        rewardIdByKey.set(key, await resolveRewardCatalogId(tx, key, runId))
+      }
+
+      // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番。catalog id はマップ引き）。
+      let upgradeOrder = 0
+      for (const entry of record.upgrade_history) {
+        if (entry.entry_type === 'upgrade') {
+          upgradeOrder += 1
+          await tx.insert(upgradeEntry).values({
+            id: randomUUID(),
+            ownerId,
+            runId,
+            weekIndex: entry.week_index,
+            orderInWeek: entry.order_in_week,
+            entryType: 'upgrade',
+            upgradeCatalogId: mustGet(upgradeIdByKey, entry.name),
+            upgradeOrder,
+          })
+        } else {
+          await tx.insert(upgradeEntry).values({
+            id: randomUUID(),
+            ownerId,
+            runId,
+            weekIndex: entry.week_index,
+            orderInWeek: entry.order_in_week,
+            entryType: 'reroll',
+            flavorText: entry.flavor_text,
+          })
+        }
+      }
+
+      // reward_entry。
+      for (const r of record.reward_ledger) {
+        await tx.insert(rewardEntry).values({
           id: randomUUID(),
           ownerId,
           runId,
-          weekIndex: entry.week_index,
-          orderInWeek: entry.order_in_week,
-          entryType: 'upgrade',
-          upgradeCatalogId: catalogId,
-          upgradeOrder,
-        })
-      } else {
-        await tx.insert(upgradeEntry).values({
-          id: randomUUID(),
-          ownerId,
-          runId,
-          weekIndex: entry.week_index,
-          orderInWeek: entry.order_in_week,
-          entryType: 'reroll',
-          flavorText: entry.flavor_text,
+          rewardCatalogId: mustGet(rewardIdByKey, r.name),
+          count: r.count,
+          points: r.points,
         })
       }
-    }
-
-    // reward_entry。
-    for (const r of record.reward_ledger) {
-      const catalogId = await resolveRewardCatalogId(tx, r.name, runId)
-      await tx.insert(rewardEntry).values({
-        id: randomUUID(),
-        ownerId,
-        runId,
-        rewardCatalogId: catalogId,
-        count: r.count,
-        points: r.points,
-      })
-    }
-  })
+    }),
+  )
 
   return { runId, status }
 }

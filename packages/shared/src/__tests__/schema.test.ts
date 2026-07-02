@@ -134,6 +134,16 @@ describe('UpgradeHistoryEntrySchema', () => {
     expect(parsed.entry_type === 'reroll' && parsed.flavor_text).toBe(raw)
   })
 
+  it('flavor_text が MySQL TEXT 上限(65535 バイト)を超えると error', () => {
+    const bad = UpgradeHistoryEntrySchema.safeParse({
+      entry_type: 'reroll',
+      week_index: 2,
+      order_in_week: 1,
+      flavor_text: 'x'.repeat(65_536),
+    })
+    expect(bad.success).toBe(false)
+  })
+
   it('flavor_text が空白のみなら error', () => {
     const bad = UpgradeHistoryEntrySchema.safeParse({
       entry_type: 'reroll',

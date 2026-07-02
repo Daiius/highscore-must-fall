@@ -15,6 +15,11 @@ import { SCHEMA_VERSION } from './version'
  */
 const INT32_MAX = 2_147_483_647
 const VARCHAR_MAX = 191
+/** MySQL TEXT の格納上限（バイト）。flavor_text 等の TEXT カラム用。 */
+const TEXT_MAX_BYTES = 65_535
+
+/** 文字列の UTF-8 バイト長。TextEncoder は Node/ブラウザ共通（Buffer 非依存で shared に置ける）。 */
+const utf8ByteLength = (s: string): number => new TextEncoder().encode(s).length
 
 /** 結果指標・reward の count/points 用。負値・非整数・INT 範囲超過は error。 */
 const nonNegativeInt = z.int().min(0).max(INT32_MAX)
@@ -83,9 +88,13 @@ export const UpgradeHistoryEntrySchema = z.discriminatedUnion('entry_type', [
     week_index: positiveInt,
     order_in_week: positiveInt,
     // verbatim 保存（証跡・集計対象外）。前後空白も保持し、変換しない。空白のみは拒否。
+    // 保存先は MySQL TEXT（65535 バイト）。上限超過は保存時 500 になるため contract で弾く。
     flavor_text: z
       .string()
       .refine((v) => v.trim().length > 0, { message: 'flavor_text が空白のみです' })
+      .refine((v) => utf8ByteLength(v) <= TEXT_MAX_BYTES, {
+        message: `flavor_text が長すぎます（UTF-8 で ${TEXT_MAX_BYTES} バイト以内）`,
+      })
       .optional(),
   }),
 ])
