@@ -1,9 +1,18 @@
-// ラン詳細。コア指標・UPGRADE HISTORY（週ごと）・REWARD LEDGER を表示。削除も可能。
+// ラン詳細。コア指標・UPGRADE HISTORY（週ごと）・REWARD LEDGER を表示。
+// draft は「確定する」で confirmed へ遷移（server 側で raw_payload を再検証）。削除も可能。
 
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { client } from '../api'
+import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../lib/auth'
+
+interface Issue {
+  level: 'error' | 'warning'
+  code: string
+  message: string
+  path: (string | number)[]
+}
 
 interface UpgradeEntry {
   id: string
@@ -46,6 +55,18 @@ export function RunDetail() {
   const [run, setRun] = useState<RunDetailData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmIssues, setConfirmIssues] = useState<Issue[]>([])
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  // メニューは外側クリックで閉じる（トグルボタン側は stopPropagation で除外）。
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = () => setMenuOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [menuOpen])
 
   useEffect(() => {
     void (async () => {
@@ -76,6 +97,36 @@ export function RunDetail() {
     if (res.ok) void navigate({ to: '/runs' })
   }
 
+  async function changeStatus(status: 'draft' | 'confirmed') {
+    setBusy(true)
+    setActionError(null)
+    setConfirmIssues([])
+    try {
+      const res = await client.api.runs[':id'].$patch({ param: { id }, json: { status } })
+      if (res.status === 401) {
+        clearSession()
+        return
+      }
+      const data = (await res.json()) as { ok?: boolean; issues?: Issue[] }
+      if (res.ok && data.ok) {
+        setRun((prev) => (prev ? { ...prev, status } : prev))
+        // 確定は成功しても warning は残せる（要確認として表示し続ける）。
+        setConfirmIssues(data.issues ?? [])
+      } else {
+        setActionError(
+          status === 'confirmed'
+            ? '確定できませんでした。検証エラーを確認してください。'
+            : '下書きに戻せませんでした。',
+        )
+        setConfirmIssues(data.issues ?? [])
+      }
+    } catch {
+      setActionError('リクエストに失敗しました')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <p className="text-slate-400">読み込み中…</p>
   if (notFound || !run) return <p className="text-slate-400">ランが見つかりません。</p>
 
@@ -85,19 +136,88 @@ export function RunDetail() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="font-bold text-white text-xl">
+          <h1 className="flex items-center gap-3 font-bold text-white text-xl">
             スコア {run.finalScore?.toLocaleString() ?? '—'}
+            <StatusBadge status={run.status} />
           </h1>
           <p className="text-slate-400 text-sm">{formatDate(run.playedAt)}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void remove()}
-          className="rounded border border-red-500/50 px-3 py-1.5 text-red-400 text-sm hover:bg-red-500/10"
-        >
-          削除
-        </button>
+        <div className="relative flex gap-3">
+          {run.status === 'draft' && (
+            <button
+              type="button"
+              onClick={() => void changeStatus('confirmed')}
+              disabled={busy}
+              className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
+            >
+              確定する
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="その他の操作"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen((o) => !o)
+            }}
+            className="rounded border border-slate-600 px-2.5 py-1.5 text-slate-300 text-sm hover:bg-slate-700"
+          >
+            ⋮
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute top-full right-0 z-10 mt-1 w-40 rounded-lg border border-slate-700 bg-slate-800 py-1 shadow-lg"
+            >
+              {run.status === 'confirmed' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    void changeStatus('draft')
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-slate-200 text-sm hover:bg-slate-700 disabled:opacity-50"
+                >
+                  下書きに戻す
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  void remove()
+                }}
+                className="w-full px-3 py-1.5 text-left text-red-400 text-sm hover:bg-slate-700"
+              >
+                削除
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {actionError && <p className="text-red-400 text-sm">{actionError}</p>}
+      {confirmIssues.length > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <h2 className="mb-2 font-semibold text-slate-200 text-sm">確定時の検証結果</h2>
+          <ul className="space-y-1">
+            {confirmIssues.map((issue, i) => (
+              <li key={`${issue.code}-${i}`} className="text-slate-300 text-sm">
+                <span className={issue.level === 'error' ? 'text-red-400' : 'text-amber-300'}>
+                  [{issue.level}]
+                </span>{' '}
+                <span className="text-slate-500">{issue.path.join('.') || '—'}: </span>
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="生存日数" value={run.daysSurvived} />

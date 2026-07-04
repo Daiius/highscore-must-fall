@@ -3,6 +3,7 @@
 import { Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { client } from '../api'
+import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../lib/auth'
 
 interface RunRow {
@@ -147,14 +148,6 @@ export function Runs() {
         </>
       )}
     </div>
-  )
-}
-
-function StatusBadge({ status }: { status: 'draft' | 'confirmed' }) {
-  return status === 'confirmed' ? (
-    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-emerald-300 text-xs">確定</span>
-  ) : (
-    <span className="rounded bg-slate-600/40 px-2 py-0.5 text-slate-300 text-xs">ドラフト</span>
   )
 }
 
