@@ -12,6 +12,10 @@
 > なぜ web 側か: docker compose watch の sync 対象が `packages/web` / `packages/shared` のみで、
 > `prd/` 配下ではプロンプト調整のホットリロードが効かないため（compose.yaml §web.develop.watch）。
 
+契約（`shared` スキーマ / フラット変換規約）との乖離は server のテストで検知する:
+本文中の EXAMPLE を ingestion 検証に通し、契約変更で fail させる
+（[`packages/server/src/lib/__tests__/oneshot-prompt.test.ts`](../../packages/server/src/lib/__tests__/oneshot-prompt.test.ts)）。
+
 ## 内容の要点（本文の設計意図）
 
 - ルール7項（綴りそのまま / 並び順・重複維持 / 灰色斜体=リロール / points は表示値 /

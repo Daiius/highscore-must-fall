@@ -61,7 +61,11 @@
     既知カタログ名に寄せろ 等のドメイン指示。[01](./01-game-domain.md) 由来）。
   - （任意）**既知カタログ**の一覧（名寄せ精度向上）。
 - ユーザーはこれを自前 LLM にスクショと共に渡し、出力 JSON をインポートする。
-- これらはすべて **`shared`（contract）から生成**されるため、スキーマ更新に自動追従する。
+- **JSON Schema は `shared`（contract）から導出**され、スキーマ更新に自動追従する。
+- **プロンプト・テンプレ・正解例は人手キュレーションの文書**（few-shot の散文・正解例はスキーマから
+  機械生成できない）。契約との乖離は**テストで検知**する: 配布プロンプトの EXAMPLE を server の
+  ingestion 検証に通し、スキーマ/変換規約の変更で fail させる（生成による自動追従の代わりに
+  乖離検知で同じ性質を担保）。
 
 > **具体キット**: [`analysis-kit/`](./analysis-kit/)（[prompt.md](./analysis-kit/prompt.md) / [template.yaml](./analysis-kit/template.yaml) / [example.yaml](./analysis-kit/example.yaml)）。
 > 汎用チャット LLM 向けに「最小プロンプト + 記法内包テンプレ + 正解例(few-shot)」でブレを抑える。
@@ -86,7 +90,7 @@
   - **`get_extraction_guide`**: 最新の抽出手順＋ `schema_version` を返す。
   - **`list_catalog`**: 既知の正規名カタログを返す（ユーザー LLM が正規名に寄せて出力できる）。
 - **API**: 同一スキーマの HTTP エンドポイント。ユーザー単位トークン（better-auth 発行。[05](./05-auth-and-privacy.md)）。
-- いずれも §6 のキット生成ロジックと §4 の検証層を再利用するだけ（契約が1つなので後付けコスト低）。
+- いずれも §6 のキットと §4 の検証層を再利用するだけ（契約が1つなので後付けコスト低）。
 
 ## 9. Phase3: 全自動（サーバ側 LLM）
 
