@@ -5,8 +5,9 @@
 //   - stats      : 確定ラン数 / ベスト / 平均。
 //   - frequency  : upgrade catalog ごとの取得回数（表示名付き）。
 //   - weekByCatalog / orderByCatalog : catalog ごとの週・取得手目(upgrade_order)分布。
-//   - timeline   : 直近 TIMELINE_RUN_LIMIT 件の確定 run の upgrade 取得フラット行
-//                  （run×catalog×week。取得タイムラインのドットマトリクス用）。
+//   - timelineRuns / timeline : 直近 TIMELINE_RUN_LIMIT 件の確定 run のメタ（played_at 昇順・
+//                  スコア付き。取得ゼロの run も含む）と、upgrade 取得のフラット行
+//                  （run×catalog×week。取得タイムライン用）。
 // 集計キーは安定した catalog ID。
 
 import { db, run, upgradeCatalog, upgradeEntry } from 'database'
@@ -75,29 +76,29 @@ export async function getAnalysisSummary(ownerId: string) {
       .groupBy(upgradeEntry.upgradeCatalogId, upgradeEntry.upgradeOrder),
   ])
 
-  // 取得タイムライン: 直近 TIMELINE_RUN_LIMIT 件の確定 run について、
-  // upgrade 取得を (run, played_at, catalog, week) のフラット行で返す（順序は client 側で整形）。
+  // 取得タイムライン: 直近 TIMELINE_RUN_LIMIT 件の確定 run。
+  // run メタ（timelineRuns）と取得フラット行（timeline）を分けて返す —
+  // エントリ起点だけだと取得ゼロ/リロールのみの run が run 軸・カードから欠落するため。
   const recentRunRows = await db
-    .select({ id: run.id })
+    .select({ runId: run.id, playedAt: run.playedAt, finalScore: run.finalScore })
     .from(run)
     .where(confirmedRun)
     .orderBy(desc(run.playedAt), desc(run.id))
     .limit(TIMELINE_RUN_LIMIT)
-  const recentRunIds = recentRunRows.map((r) => r.id)
+  // 直近 N 件を新しい順で取り、表示用に古い順へ戻す。
+  const timelineRuns = [...recentRunRows].reverse()
+  const recentRunIds = timelineRuns.map((r) => r.runId)
   const timeline =
     recentRunIds.length === 0
       ? []
       : await db
           .select({
             runId: upgradeEntry.runId,
-            playedAt: run.playedAt,
-            finalScore: run.finalScore,
             catalogId: upgradeEntry.upgradeCatalogId,
             name: upgradeCatalog.displayName,
             week: upgradeEntry.weekIndex,
           })
           .from(upgradeEntry)
-          .innerJoin(run, eq(upgradeEntry.runId, run.id))
           .leftJoin(upgradeCatalog, eq(upgradeEntry.upgradeCatalogId, upgradeCatalog.id))
           .where(
             and(
@@ -106,7 +107,7 @@ export async function getAnalysisSummary(ownerId: string) {
               inArray(upgradeEntry.runId, recentRunIds),
             ),
           )
-          .orderBy(asc(run.playedAt), asc(run.id), asc(upgradeEntry.weekIndex))
+          .orderBy(asc(upgradeEntry.weekIndex), asc(upgradeEntry.orderInWeek))
 
   const stats = statsRows[0]
   return {
@@ -119,6 +120,7 @@ export async function getAnalysisSummary(ownerId: string) {
     frequency: [...frequency].sort((a, b) => b.count - a.count),
     weekByCatalog,
     orderByCatalog,
+    timelineRuns,
     timeline,
     timelineRunLimit: TIMELINE_RUN_LIMIT,
   }

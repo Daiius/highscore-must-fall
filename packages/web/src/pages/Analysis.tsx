@@ -22,6 +22,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from 'recharts'
 import {
   UPGRADE_SERIES_KEYS,
@@ -32,10 +33,13 @@ import {
 import { client } from '../api'
 import { useAuth } from '../lib/auth'
 
-interface TimelineRow {
+interface TimelineRunMeta {
   runId: string
   playedAt: string
   finalScore: number | null
+}
+interface TimelineRow {
+  runId: string
   catalogId: string | null
   name: string | null
   week: number
@@ -44,7 +48,9 @@ interface TimelinePoint {
   x: number
   y: number
   label: string
-  week: number
+  /** 同一 run 内の同名取得を集約した回数と週リスト（重なり点を作らない）。 */
+  count: number
+  weeks: number[]
   playedAt: string
 }
 interface Summary {
@@ -53,6 +59,7 @@ interface Summary {
   frequency: { catalogId: string | null; name: string | null; count: number }[]
   weekByCatalog: { catalogId: string | null; week: number; count: number }[]
   orderByCatalog: { catalogId: string | null; order: number | null; count: number }[]
+  timelineRuns: TimelineRunMeta[]
   timeline: TimelineRow[]
   timelineRunLimit: number
 }
@@ -78,10 +85,6 @@ const SERIES_COLORS: Record<UpgradeSeries, string> = {
   opportunity: '#94a3b8',
   unknown: '#64748b',
 }
-
-/** 5週以降は W5+ に畳む（存在確認済みの週規模が最大5のため）。 */
-const weekBucket = (week: number) => Math.min(week, 5)
-const weekShort = (bucket: number) => (bucket >= 5 ? 'W5+' : `W${bucket}`)
 
 export function Analysis() {
   const { clearSession } = useAuth()
@@ -129,17 +132,20 @@ export function Analysis() {
     [summary],
   )
 
-  // タイムライン: run（昇順・等間隔用 index 付き）。
+  // タイムライン: run メタ（played_at 昇順・等間隔用 index 付き）。
+  // エントリ起点でなく run メタ起点にする（取得ゼロ/リロールのみの run も軸・カードに出す）。
   const timelineRuns = useMemo(() => {
-    const map = new Map<string, { seq: number; t: number; playedAt: string }>()
-    for (const row of summary?.timeline ?? []) {
-      if (!map.has(row.runId)) {
-        map.set(row.runId, {
-          seq: map.size,
-          t: new Date(row.playedAt).getTime(),
-          playedAt: row.playedAt,
-        })
-      }
+    const map = new Map<
+      string,
+      { seq: number; t: number; playedAt: string; finalScore: number | null }
+    >()
+    for (const r of summary?.timelineRuns ?? []) {
+      map.set(r.runId, {
+        seq: map.size,
+        t: new Date(r.playedAt).getTime(),
+        playedAt: r.playedAt,
+        finalScore: r.finalScore,
+      })
     }
     return map
   }, [summary])
@@ -156,23 +162,37 @@ export function Analysis() {
 
   // アップグレード別ドットマトリクス: 系統ごとの点列（色 = 系統。y は数値インデックス =
   // 頻度降順の行順を強制するため。category 軸はデータ出現順になってしまう）。
+  // 同一 run 内の同名取得は1点に集約（完全に重なった点は判別不能になるため。
+  // 回数は点サイズ + ツールチップ、取得週はツールチップに全列挙）。
   const matrixBySeries = useMemo(() => {
     const nameIndex = new Map(timelineNames.map((n, i) => [n, i]))
-    const buckets = new Map<UpgradeSeries, TimelinePoint[]>()
+    const agg = new Map<string, TimelinePoint>()
     for (const row of summary?.timeline ?? []) {
       if (row.name == null) continue
       const runPos = timelineRuns.get(row.runId)
       const y = nameIndex.get(row.name)
       if (!runPos || y == null) continue
-      const series = upgradeSeriesOf(row.name)
+      const key = `${row.runId}|${row.name}`
+      const found = agg.get(key)
+      if (found) {
+        found.count += 1
+        found.weeks.push(row.week)
+      } else {
+        agg.set(key, {
+          x: axisMode === 'time' ? runPos.t : runPos.seq,
+          y,
+          label: row.name,
+          count: 1,
+          weeks: [row.week],
+          playedAt: runPos.playedAt,
+        })
+      }
+    }
+    const buckets = new Map<UpgradeSeries, TimelinePoint[]>()
+    for (const p of agg.values()) {
+      const series = upgradeSeriesOf(p.label)
       const list = buckets.get(series) ?? []
-      list.push({
-        x: axisMode === 'time' ? runPos.t : runPos.seq,
-        y,
-        label: row.name,
-        week: row.week,
-        playedAt: row.playedAt,
-      })
+      list.push(p)
       buckets.set(series, list)
     }
     return UPGRADE_SERIES_KEYS.filter((k) => buckets.has(k)).map(
@@ -180,52 +200,38 @@ export function Analysis() {
     )
   }, [summary, timelineRuns, timelineNames, axisMode])
 
-  // 系統構成カード: run ごとに週×系統の取得数を集計。
+  // 系統構成カード: run メタ起点（取得ゼロ run も空カードで出す）に、
+  // 実在する week_index をそのまま週×系統で集計する（W5+ への畳み込みはしない —
+  // 長期 run の取得タイミングが失われるため。カード内の棒本数は週数に応じて可変）。
   const composition = useMemo(() => {
     const present = new Set<UpgradeSeries>()
-    const runs = new Map<
-      string,
-      {
-        runId: string
-        playedAt: string
-        t: number
-        finalScore: number | null
-        weeks: Map<number, Partial<Record<UpgradeSeries, number>>>
-      }
-    >()
+    const weeksByRun = new Map<string, Map<number, Partial<Record<UpgradeSeries, number>>>>()
     for (const row of summary?.timeline ?? []) {
-      if (row.name == null) continue
+      if (row.name == null || !timelineRuns.has(row.runId)) continue
       const series = upgradeSeriesOf(row.name)
       present.add(series)
-      const entry = runs.get(row.runId) ?? {
-        runId: row.runId,
-        playedAt: row.playedAt,
-        t: new Date(row.playedAt).getTime(),
-        finalScore: row.finalScore,
-        weeks: new Map(),
-      }
-      const b = weekBucket(row.week)
-      const counts = entry.weeks.get(b) ?? {}
+      const weeks = weeksByRun.get(row.runId) ?? new Map()
+      const counts = weeks.get(row.week) ?? {}
       counts[series] = (counts[series] ?? 0) + 1
-      entry.weeks.set(b, counts)
-      runs.set(row.runId, entry)
+      weeks.set(row.week, counts)
+      weeksByRun.set(row.runId, weeks)
     }
     const seriesPresent = UPGRADE_SERIES_KEYS.filter((k) => present.has(k))
-    const cards = [...runs.values()].map((r) => ({
-      runId: r.runId,
-      playedAt: r.playedAt,
-      t: r.t,
-      finalScore: r.finalScore,
-      weeks: [...r.weeks.entries()]
+    const cards = [...timelineRuns.entries()].map(([runId, meta]) => ({
+      runId,
+      playedAt: meta.playedAt,
+      t: meta.t,
+      finalScore: meta.finalScore,
+      weeks: [...(weeksByRun.get(runId) ?? new Map()).entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([b, counts]) => {
-          const rec: Record<string, number | string> = { w: weekShort(b) }
+        .map(([week, counts]) => {
+          const rec: Record<string, number | string> = { w: `W${week}` }
           for (const k of seriesPresent) rec[k] = counts[k] ?? 0
           return rec
         }),
     }))
     return { seriesPresent, cards }
-  }, [summary])
+  }, [summary, timelineRuns])
 
   const compositionCards = useMemo(() => {
     const cards = [...composition.cards]
@@ -369,6 +375,7 @@ export function Analysis() {
                     width={190}
                     tick={{ fill: '#cbd5e1' }}
                   />
+                  <ZAxis dataKey="count" type="number" range={[50, 200]} />
                   <Tooltip content={<TimelineTooltip />} cursor={{ strokeDasharray: '3 3' }} />
                   <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11, color: '#cbd5e1' }} />
                   {matrixBySeries.map(([series, points]) => (
@@ -550,9 +557,12 @@ function TimelineTooltip({
   if (!active || !p) return null
   return (
     <div style={TOOLTIP_STYLE} className="px-3 py-2 text-sm">
-      <div className="font-medium">{p.label}</div>
+      <div className="font-medium">
+        {p.label}
+        {p.count > 1 && ` ×${p.count}`}
+      </div>
       <div className="text-slate-400 text-xs">
-        WEEK {p.week} / {fmtDateTime(p.playedAt)}
+        {p.weeks.map((w) => `WEEK ${w}`).join(', ')} / {fmtDateTime(p.playedAt)}
       </div>
     </div>
   )
