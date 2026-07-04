@@ -5,5 +5,6 @@
 export * from './json-schema'
 export * from './normalize'
 export * from './schema'
+export * from './series'
 export * from './validate'
 export * from './version'

@@ -12,8 +12,9 @@
 import { normalizeName } from 'shared'
 import { client, db, rewardCatalog, upgradeCatalog } from './index'
 
-// kind 既定は contract。CONTEXT SWITCH のみ opportunity_upgrade（OU。ラン跨ぎ恒久解禁の
-// メタ進行。prd/03 §3.5・.claude/rules/database.md）。seed はこの既知分類を正典として与える。
+// kind 既定は contract。OU（opportunity_upgrade）は CONTEXT SWITCH（スクショ確定）に加え、
+// BULKY PROJECTILES / EXTENDED SENSOR RANGE / PIVOT RELOAD（Steam ガイド「Utopia Must Learn」
+// = 二次情報の OU 一覧より）。seed はこの既知分類を正典として与える（prd/03 §3.5・rules/database.md）。
 type UpgradeKind = 'contract' | 'opportunity_upgrade'
 interface UpgradeSeed {
   name: string
@@ -70,13 +71,13 @@ const UPGRADES: readonly UpgradeSeed[] = [
   { name: 'TWIN DRONE FACTORY', ...VERIFIED },
   { name: 'DOUBLE-BARRELLED DRONES', ...VERIFIED },
   { name: 'EFFICIENT RELOADING', ...VERIFIED },
-  { name: 'BULKY PROJECTILES', ...VERIFIED },
-  { name: 'EXTENDED SENSOR RANGE', ...VERIFIED },
+  { name: 'BULKY PROJECTILES', kind: 'opportunity_upgrade', ...VERIFIED },
+  { name: 'EXTENDED SENSOR RANGE', kind: 'opportunity_upgrade', ...VERIFIED },
   // 実測 run 由来の仮登録（6種）
   { name: 'EXTENDED BARREL', ...PROVISIONAL },
   { name: 'HARDENED SPLINTERS', ...PROVISIONAL },
   { name: 'INCREASE BUNDLING RATE', ...PROVISIONAL },
-  { name: 'PIVOT RELOAD', ...PROVISIONAL },
+  { name: 'PIVOT RELOAD', kind: 'opportunity_upgrade', ...PROVISIONAL },
   { name: 'SPLINTERING POLES', ...PROVISIONAL },
   { name: 'TELEGRAPH BASILISK', ...PROVISIONAL },
 ]
@@ -155,11 +156,12 @@ async function main() {
       .insert(upgradeCatalog)
       .values(row)
       .onDuplicateKeyUpdate({
-        // verified 行は kind/verified も seed を正典として上書き（再 seed でドリフトを戻す）。
-        // 仮登録行は既存の verified/kind を上書きしない（人手 verify の結果を再 seed で壊さない）。
+        // kind は常に seed を正典として上書き（再 seed で既知分類のドリフトを戻す）。
+        // verified は verified 行のみ昇格させ、仮登録行では既存値を保護する
+        // （人手 verify の結果を再 seed で降格させない）。
         set: row.verified
           ? { displayName: row.displayName, kind: row.kind, verified: true }
-          : { displayName: row.displayName },
+          : { displayName: row.displayName, kind: row.kind },
       })
   }
   for (const row of rewardRows) {
