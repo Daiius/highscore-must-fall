@@ -2,7 +2,7 @@
 // 分析キット（JSON Schema）ダウンロード導線も提供する（prd/04 §3・§4・§6）。
 
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL, client } from '../api'
 import oneshotPrompt from '../assets/oneshot-prompt.txt?raw'
 import { useAuth } from '../lib/auth'
@@ -43,6 +43,14 @@ export function Import() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [promptCopied, setPromptCopied] = useState(false)
+  // 連打時に前回のタイマーが新しい成功表示を早期に消さないよう、単一のタイマーを保持する。
+  const promptCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (promptCopiedTimer.current) clearTimeout(promptCopiedTimer.current)
+    },
+    [],
+  )
 
   const errors = result?.issues.filter((i) => i.level === 'error') ?? []
   const warnings = result?.issues.filter((i) => i.level === 'warning') ?? []
@@ -64,7 +72,8 @@ export function Import() {
     try {
       await navigator.clipboard.writeText(oneshotPrompt)
       setPromptCopied(true)
-      setTimeout(() => setPromptCopied(false), 2000)
+      if (promptCopiedTimer.current) clearTimeout(promptCopiedTimer.current)
+      promptCopiedTimer.current = setTimeout(() => setPromptCopied(false), 2000)
     } catch {
       setError('クリップボードへのコピーに失敗しました')
     }
