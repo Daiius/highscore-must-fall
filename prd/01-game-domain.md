@@ -100,35 +100,23 @@
 - 手作業での読み取りは誤りやすい（例: 手起こしサンプルで `apocalypse_bonus` を 1208→1200 と誤記）。
   → **確定前のレビュー＋整合チェックが必須**である根拠。
 
-## 7. 初期カタログ（master）
+## 7. カタログ（master）
 
 - アップグレード名・リワード名は表記ゆれ・OCR 誤りで揺れるため、正規化して**カタログ（master）**に名寄せする。
-  カタログは事前に全列挙せず、**未知名を自動登録（unverified）→ 後で人手で verify/統合**して育てる（→ [03](./03-data-model.md)）。
-- **初期 seed はサンプルに登場した名称のみ**投入する。
-
-### 7.1 アップグレード（16種）
-
-> `DEPLOY LASER WATCHTOWER` はサンプル内で2回出現するが、カタログ上は1エントリ（重複は run 側の履歴で表現）。
-> リロール由来の灰色テキスト（`DIGITIZE CONSCIOUSNESS` / `WELCOMING CEREMONY`）は**アップグレードではない**ため含めない。
-
-WEEK 1 由来:
-`NUCLEAR WEAPONS LAB` / `RATIONED WARHEADS` / `INCREASE PRODUCTION` / `ARC FLAIL` /
-`INCREASE FIRE RATE` / `REGENERATIVE SHIELD` / `BLACKOUT PROTOCOL` / `INSTITUTE OF AUTOMATION` /
-`DEPLOY LASER WATCHTOWER` / `PLASMA PHYSICS LAB` / `OPTIMIZED OPERATIONS`
-
-WEEK 2 由来:
-`ADVANCED MATERIALS LAB` / `EXTENDED FLAIL` / `CONTEXT SWITCH` / `OFFENSIVE INNOVATION CENTER` /
-`COBALT COIL GUN`
-
-（計 16 種）
-
-### 7.2 リワード（13種）
-
-`BOHEMIAN` / `OBSESSIVE` / `CHEF'S KISS` / `CONSERVATION` / `NO ESCAPE` / `LASER DISCO` /
-`DISCIPLINE` / `ANNIHILATION` / `COMPLETIST` / `MINT CONDITION` / `GONNAHAVEMESOMEFUN` /
-`HARD CHEESE` / `CLOSE SHAVE`
-
-（計 13 種）
+- **カタログは「投入値はこのリストから選ぶ」母集団が基本**。未知名の自動登録（unverified →
+  後で人手 verify/統合。[03](./03-data-model.md)）は、ゲームのアップデートにカタログ整備が
+  追いつかない期間の**補助**であり、常用経路ではない（新名称は他プレイヤーの攻略情報の方が
+  早く出回るため、リスト整備が追走する前提）。
+- **名称リストの正典は seed**（[`packages/database/src/seed.ts`](../packages/database/src/seed.ts)）。
+  本文書にはリストを重複記載しない。seed 内の区分:
+  - **verified** — スクショ一次情報（[§8 samples/](./samples/)）と突合済み。
+    sample-01〜03 由来: アップグレード 43 種 / リワード 28 種（2026-07-04 時点）。
+  - **仮登録（unverified）** — 実測 run 由来でスクショ未検証。読み取りミスが疑われる名称は
+    seed に入れない（ローカルの疑義リストで管理し、検証後に昇格）。
+- リロール由来の灰色テキスト（`DIGITIZE CONSCIOUSNESS` / `WELCOMING CEREMONY`）は
+  **アップグレードではない**ため含めない。同名の複数出現（`DEPLOY LASER WATCHTOWER` 等）は
+  カタログ上 1 エントリ（重複は run 側の履歴で表現）。
+- `CONTEXT SWITCH` のみ `kind=opportunity_upgrade`（OU。[03](./03-data-model.md) §3.5）。
 
 ## 8. サンプルデータ（一次情報）
 
