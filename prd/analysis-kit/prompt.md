@@ -7,7 +7,9 @@ Utopia Must Fall のリザルト画面スクショから、投入用の YAML を
 - [`example.yaml`](./example.yaml) — 埋まった**正解例**（few-shot アンカー。リロールの書き方も実演）
 - [`example-02.yaml`](./example-02.yaml) / [`example-03.yaml`](./example-03.yaml) — 追加の実ラン正解例
   （スクショは [`../samples/`](../samples/) の `*-02` / `*-03`。02 はリロール1件を含む・03 は 5 週規模で全て通常アップグレード。いずれも `points` 合計 = `apocalypse_bonus` で自己整合）
-- [`oneshot.md`](./oneshot.md) — **一発コピペ用**（指示＋記法＋正解例を1メッセージに畳んだ版。ファイル添付が面倒なとき）
+- [`oneshot.md`](./oneshot.md) — **一発コピペ用**（指示＋記法＋正解例を1メッセージに畳んだ版。ファイル添付が面倒なとき）。
+  本文の実体は [`packages/web/src/assets/oneshot-prompt.txt`](../../packages/web/src/assets/oneshot-prompt.txt)
+  で、web のインポート画面の「LLM プロンプトをコピー」ボタンから配布する（経緯は oneshot.md）
 - 本ファイル — 最小指示プロンプト（ファイル添付運用の説明）
 
 投入・検証フローでの位置づけは [`04-ingestion.md`](../04-ingestion.md)。出力 YAML は server の

@@ -4,6 +4,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { API_BASE_URL, client } from '../api'
+import oneshotPrompt from '../assets/oneshot-prompt.txt?raw'
 import { useAuth } from '../lib/auth'
 
 interface Issue {
@@ -41,6 +42,7 @@ export function Import() {
   const [result, setResult] = useState<ValidateResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [promptCopied, setPromptCopied] = useState(false)
 
   const errors = result?.issues.filter((i) => i.level === 'error') ?? []
   const warnings = result?.issues.filter((i) => i.level === 'warning') ?? []
@@ -56,6 +58,16 @@ export function Import() {
     setFormat(v)
     setResult(null)
     setError(null)
+  }
+
+  async function copyPrompt() {
+    try {
+      await navigator.clipboard.writeText(oneshotPrompt)
+      setPromptCopied(true)
+      setTimeout(() => setPromptCopied(false), 2000)
+    } catch {
+      setError('クリップボードへのコピーに失敗しました')
+    }
   }
 
   async function validate() {
@@ -118,6 +130,29 @@ export function Import() {
         リザルト画面のスクショを自前の LLM で解析した JSON/YAML を貼り付けてください。
         記法は下の例と同じフラット形（week / type / name|flavor）でも、正規形でも受理します。
       </p>
+
+      <div className="rounded-lg border border-slate-700 bg-slate-900 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-slate-300 text-sm">
+            スクショ3枚（結果 / UPGRADE HISTORY / REWARD LEDGER）と一緒に LLM へ貼るプロンプト
+          </p>
+          <button
+            type="button"
+            onClick={() => void copyPrompt()}
+            className="rounded border border-slate-600 px-3 py-1 font-medium text-slate-200 text-sm hover:bg-slate-700"
+          >
+            {promptCopied ? 'コピーしました ✓' : 'LLM プロンプトをコピー'}
+          </button>
+        </div>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-slate-500 text-xs hover:text-slate-300">
+            本文を表示
+          </summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-slate-300 text-xs">
+            {oneshotPrompt}
+          </pre>
+        </details>
+      </div>
 
       <div className="space-y-2">
         <div className="flex items-center gap-3">

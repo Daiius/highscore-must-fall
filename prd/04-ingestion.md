@@ -65,6 +65,8 @@
 
 > **具体キット**: [`analysis-kit/`](./analysis-kit/)（[prompt.md](./analysis-kit/prompt.md) / [template.yaml](./analysis-kit/template.yaml) / [example.yaml](./analysis-kit/example.yaml)）。
 > 汎用チャット LLM 向けに「最小プロンプト + 記法内包テンプレ + 正解例(few-shot)」でブレを抑える。
+> 一発コピペ版はインポート画面の「LLM プロンプトをコピー」で配布（本文の実体と配置理由は
+> [analysis-kit/oneshot.md](./analysis-kit/oneshot.md)）。
 > 出力のフラット形 `{ week, type, name|flavor }` は、アダプタが `order_in_week` を振るだけで正規スキーマへ 1:1 変換できる。
 
 ## 7. 画像アップロード（証跡）
