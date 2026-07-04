@@ -1,62 +1,23 @@
 # 一発コピペ用（チャット欄に貼り付け + スクショ3枚 + Enter）
 
-ファイル添付が面倒なとき用。下の `===== コピーここから =====` から
-`===== コピーここまで =====` までを丸ごとコピーし、リザルト系スクショ3枚
-（結果画面 / UPGRADE HISTORY / REWARD LEDGER）と一緒にチャットへ貼って送信する。
-指示・記法・正解例（few-shot）を1メッセージに畳んである。
+ファイル添付が面倒なとき用。指示・記法・正解例（few-shot）を1メッセージに畳んだプロンプト。
+リザルト系スクショ3枚（結果画面 / UPGRADE HISTORY / REWARD LEDGER）と一緒にチャットへ貼って送信する。
 
-===== コピーここから =====
-Utopia Must Fall のリザルト系スクショ3枚（結果画面 / UPGRADE HISTORY / REWARD LEDGER）を読んで、
-下の EXAMPLE と同じ形式・キー名の YAML を作って。ルール厳守：
+## 本文の置き場所（単一の真実）
 
-1. 名前は画面の綴りを一字一句そのまま（似た語に直さない・略さない。例: DIGITIZE を DIGITAL にしない）。
-2. UPGRADE HISTORY は週ごと・画面の並び順のまま全行。同名の連続もそのまま重複させる。
-3. 灰色斜体の行はリロール → { week: N, type: reroll, flavor: <その灰色テキスト> }。色付きの行は type: upgrade。
-4. REWARD LEDGER の points は行に表示された数値（その報酬の合計点）。count（○×）とは掛けない。
-5. 出力前に reward の points 合計 = apocalypse_bonus（☆合計）が一致するか確認。ズレたら読み直す。
-6. 読み取れない値は憶測せず null。
-7. 出力は YAML だけをコードブロック1つで。EXAMPLE の値はあなたのスクショの内容に置き換える。
+プロンプト本文は **web のインポート画面の「LLM プロンプトをコピー」ボタン**から配布するため、
+[`packages/web/src/assets/oneshot-prompt.txt`](../../packages/web/src/assets/oneshot-prompt.txt) に置いてある。
+ここに本文を重複させると必ず乖離するので、**編集は上記 txt のみ**（この文書はポインタ）。
 
-EXAMPLE（記法の見本。points 合計 1208 = apocalypse_bonus で自己整合）:
-game: UTOPIA MUST FALL
-result:
-  days_survived: 10
-  final_score: 143161
-  aliens_defeated: 1336
-  nukes_launched: 3
-  apocalypse_bonus: 1208
-upgrade_history:
-  - { week: 1, type: upgrade, name: NUCLEAR WEAPONS LAB }
-  - { week: 1, type: upgrade, name: RATIONED WARHEADS }
-  - { week: 1, type: upgrade, name: INCREASE PRODUCTION }
-  - { week: 1, type: upgrade, name: ARC FLAIL }
-  - { week: 1, type: upgrade, name: INCREASE FIRE RATE }
-  - { week: 1, type: upgrade, name: REGENERATIVE SHIELD }
-  - { week: 1, type: upgrade, name: BLACKOUT PROTOCOL }
-  - { week: 1, type: upgrade, name: INSTITUTE OF AUTOMATION }
-  - { week: 1, type: upgrade, name: DEPLOY LASER WATCHTOWER }
-  - { week: 1, type: upgrade, name: DEPLOY LASER WATCHTOWER }
-  - { week: 1, type: upgrade, name: PLASMA PHYSICS LAB }
-  - { week: 1, type: upgrade, name: OPTIMIZED OPERATIONS }
-  - { week: 2, type: upgrade, name: ADVANCED MATERIALS LAB }
-  - { week: 2, type: reroll, flavor: DIGITIZE CONSCIOUSNESS }
-  - { week: 2, type: upgrade, name: EXTENDED FLAIL }
-  - { week: 2, type: upgrade, name: CONTEXT SWITCH }
-  - { week: 2, type: reroll, flavor: WELCOMING CEREMONY }
-  - { week: 2, type: upgrade, name: OFFENSIVE INNOVATION CENTER }
-  - { week: 2, type: upgrade, name: COBALT COIL GUN }
-reward_ledger:
-  - { name: BOHEMIAN, count: 1, points: 250 }
-  - { name: OBSESSIVE, count: 21, points: 168 }
-  - { name: CHEF'S KISS, count: 7, points: 140 }
-  - { name: CONSERVATION, count: 3, points: 120 }
-  - { name: NO ESCAPE, count: 3, points: 90 }
-  - { name: LASER DISCO, count: 3, points: 90 }
-  - { name: DISCIPLINE, count: 7, points: 70 }
-  - { name: ANNIHILATION, count: 13, points: 65 }
-  - { name: COMPLETIST, count: 11, points: 55 }
-  - { name: MINT CONDITION, count: 2, points: 50 }
-  - { name: GONNAHAVEMESOMEFUN, count: 2, points: 40 }
-  - { name: HARD CHEESE, count: 4, points: 40 }
-  - { name: CLOSE SHAVE, count: 1, points: 30 }
-===== コピーここまで =====
+> なぜ web 側か: docker compose watch の sync 対象が `packages/web` / `packages/shared` のみで、
+> `prd/` 配下ではプロンプト調整のホットリロードが効かないため（compose.yaml §web.develop.watch）。
+
+契約（`shared` スキーマ / フラット変換規約）との乖離は server のテストで検知する:
+本文中の EXAMPLE を ingestion 検証に通し、契約変更で fail させる
+（[`packages/server/src/lib/__tests__/oneshot-prompt.test.ts`](../../packages/server/src/lib/__tests__/oneshot-prompt.test.ts)）。
+
+## 内容の要点（本文の設計意図）
+
+- ルール7項（綴りそのまま / 並び順・重複維持 / 灰色斜体=リロール / points は表示値 /
+  Σpoints=apocalypse_bonus 自己チェック / 不明値は null / 出力は YAML コードブロック1つ）。
+- EXAMPLE は sample-01 相当（points 合計 1208 = apocalypse_bonus で自己整合、リロール行の書き方を実演）。
