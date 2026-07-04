@@ -20,7 +20,7 @@ import {
   upgradeEntry,
 } from 'database'
 import { and, eq } from 'drizzle-orm'
-import type { RunRecord } from 'shared'
+import { type RunRecord, type ValidationIssue, validateRunRecord } from 'shared'
 
 /** MVP の投入ルート（file_import / paste のみ。他は Phase2 以降）。 */
 export type IngestSource = 'file_import' | 'paste'
@@ -254,4 +254,51 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
   )
 
   return { runId, status }
+}
+
+export type UpdateRunStatusResult =
+  | { kind: 'not_found' }
+  | { kind: 'invalid'; issues: ValidationIssue[] }
+  | { kind: 'updated'; status: RunStatus; issues: ValidationIssue[] }
+
+/**
+ * run の status を遷移させる（prd/04 §4）。
+ *   - draft → confirmed: 保存済み raw_payload を現行契約で再検証し、error があれば遷移しない。
+ *     現状の draft は error なしでしか保存できないためほぼ素通りだが、部分ドラフト
+ *     （緩い draft 契約）導入後もこの再検証が確定条件を保つ。
+ *   - confirmed → draft（再ドラフト）: 修正作業用。検証なしで戻す。
+ * 同じ status への遷移は冪等に成功。
+ */
+export async function updateRunStatus(
+  ownerId: string,
+  runId: string,
+  status: RunStatus,
+): Promise<UpdateRunStatusResult> {
+  const rows = await db
+    .select({ status: run.status })
+    .from(run)
+    .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+    .limit(1)
+  const current = rows[0]
+  if (!current) return { kind: 'not_found' }
+  if (current.status === status) return { kind: 'updated', status, issues: [] }
+
+  let issues: ValidationIssue[] = []
+  if (status === 'confirmed') {
+    const payloadRows = await db
+      .select({ rawPayload: runPayload.rawPayload })
+      .from(runPayload)
+      .where(and(eq(runPayload.runId, runId), eq(runPayload.ownerId, ownerId)))
+      .limit(1)
+    // payload 欠落（想定外）も Zod エラーとして invalid に落ちる。
+    const result = validateRunRecord(payloadRows[0]?.rawPayload)
+    if (!result.ok) return { kind: 'invalid', issues: result.issues }
+    issues = result.issues
+  }
+
+  await db
+    .update(run)
+    .set({ status })
+    .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+  return { kind: 'updated', status, issues }
 }

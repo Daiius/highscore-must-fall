@@ -16,7 +16,7 @@ import { z } from 'zod'
 import { type AppEnv, limitIngestBody, requireUser } from '../lib/context'
 import { ingestSubmission } from '../lib/ingest'
 import { deleteRun, getRunDetail, listRuns } from '../lib/run-queries'
-import { saveRun } from '../lib/runs'
+import { saveRun, updateRunStatus } from '../lib/runs'
 
 /** run_payload.source_note は MySQL TEXT（最大 65535 バイト）。UTF-8 バイト長で制限する。 */
 const TEXT_MAX_BYTES = 65535
@@ -89,6 +89,22 @@ export const runsRoute = new Hono<AppEnv>()
     if (!detail) return c.json({ error: 'not found' }, 404)
     return c.json(detail)
   })
+  // status 遷移（owner の run のみ）。確定は raw_payload を現行契約で再検証し
+  // error があれば 422 で遷移しない。再ドラフト（confirmed→draft）は検証なし。冪等。
+  .patch(
+    '/:id',
+    requireUser,
+    zValidator('json', z.object({ status: z.enum(['draft', 'confirmed']) })),
+    async (c) => {
+      const owner = c.get('user')
+      if (!owner) return c.json({ error: 'authentication required' }, 401)
+      const body = c.req.valid('json')
+      const result = await updateRunStatus(owner.id, c.req.param('id'), body.status)
+      if (result.kind === 'not_found') return c.json({ error: 'not found' }, 404)
+      if (result.kind === 'invalid') return c.json({ ok: false, issues: result.issues }, 422)
+      return c.json({ ok: true, status: result.status, issues: result.issues })
+    },
+  )
   // 削除（owner の run のみ・子テーブルは複合 FK cascade）。
   .delete('/:id', requireUser, async (c) => {
     const owner = c.get('user')
