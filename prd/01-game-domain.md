@@ -37,6 +37,12 @@
   → 名前の集合ではなく、**順序付きの列**として保持する必要がある。
 - 表示上、項目ごとに**文字色が異なる**（黄/紫/水/青/赤…）。これはレアリティやカテゴリを示唆する可能性があるが、
   **現時点では意味を確定していない（未確認）**。MVP では記録しない。将来カタログ属性化を検討（→ [06](./06-analysis.md) Phase2）。
+- **系統（tech tree）が存在する**（二次情報: Steam ガイド
+  [Utopia Must Learn](https://steamcommunity.com/sharedfiles/filedetails/?id=3433239569)）:
+  レールガン（Volley / Coil Gun / Blunderbuss / Basilisk の4経路に分岐）・核兵器・
+  シールド/フレイル（PLASMA PHYSICS LAB 配下）・自動防衛（レーザー塔/ドローン）・OU（全20種）。
+  文字色＝系統の示唆とも整合するが、色との対応の確定は引き続き保留。
+  暫定の名前→系統マッピングは `shared/src/series.ts`（分析の系統別ビューで使用。未収載は「未分類」）。
 
 ### 3.1 リロール（reroll）
 
