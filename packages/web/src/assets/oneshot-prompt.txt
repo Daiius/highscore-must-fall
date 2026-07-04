@@ -3,11 +3,15 @@ Utopia Must Fall のリザルト系スクショ3枚（結果画面 / UPGRADE HIS
 
 1. 名前は画面の綴りを一字一句そのまま（似た語に直さない・略さない。例: DIGITIZE を DIGITAL にしない）。
 2. UPGRADE HISTORY は週ごと・画面の並び順のまま全行。同名の連続もそのまま重複させる。
-3. 灰色斜体の行はリロール → { week: N, type: reroll, flavor: <その灰色テキスト> }。色付きの行は type: upgrade。
-4. REWARD LEDGER の points は行に表示された数値（その報酬の合計点）。count（○×）とは掛けない。
-5. 出力前に reward の points 合計 = apocalypse_bonus（☆合計）が一致するか確認。ズレたら読み直す。
-6. 読み取れない値は憶測せず null。
-7. 出力は YAML だけをコードブロック1つで。EXAMPLE の値はあなたのスクショの内容に置き換える。
+3. UPGRADE HISTORY は2列レイアウト。読む順序は「左列を上から下へ → 右列を上から下へ」。
+   各行は**直前に現れた WEEK 見出し**に属する。WEEK 見出しが列の末尾にある場合、
+   その週のエントリは**次の列の先頭に続く**（右列の先頭に見出しなしで並ぶ行は、
+   左列末尾の WEEK の続き）。出力前に週ごとの行数を見直し、1つの週だけ極端に多ければ読み直す。
+4. 灰色斜体の行はリロール → { week: N, type: reroll, flavor: <その灰色テキスト> }。色付きの行は type: upgrade。
+5. REWARD LEDGER の points は行に表示された数値（その報酬の合計点）。count（○×）とは掛けない。
+6. 出力前に reward の points 合計 = apocalypse_bonus（☆合計）が一致するか確認。ズレたら読み直す。
+7. 読み取れない値は憶測せず null。
+8. 出力は YAML だけをコードブロック1つで。EXAMPLE の値はあなたのスクショの内容に置き換える。
 
 EXAMPLE（記法の見本。points 合計 1208 = apocalypse_bonus で自己整合）:
 game: UTOPIA MUST FALL
