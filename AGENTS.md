@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> このファイルがリポジトリの**正典**です（Claude Code / Codex 共通）。簡潔・リンク中心に保つこと。
+> このファイルがリポジトリの**正典**です（使用する各コーディングエージェント共通）。簡潔・リンク中心に保つこと。
 > 詳細仕様は [`prd/`](./prd/)、コーディング規約は [`.claude/rules/`](./.claude/rules/) を参照。
 
 ## プロジェクト目的
@@ -40,7 +40,7 @@
 | [`packages/database`](./packages/database) | Drizzle スキーマ・マイグレーション・DB クライアント・seed |
 | [`packages/server`](./packages/server) | Hono(RPC) API・better-auth・ingestion アダプタ・(将来)MCP |
 | [`packages/web`](./packages/web) | Vite + React + TanStack Router + Tailwind の UI |
-| [`packages/worker`](./packages/worker) | (Phase3) サーバ側 LLM 全自動分析のジョブ処理。**MVP では非実装スキャフォルド** |
+| [`packages/worker`](./packages/worker) | スクショ自動解析のジョブ処理。**compose 外・server と分離した実行環境で稼働**（prd/04 §9。具体構成は `.claude-personal/` の運用メモ） |
 
 ## 開発コマンド
 
