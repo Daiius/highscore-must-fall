@@ -3,8 +3,7 @@
 //
 //   - scoreTrend : played_at 昇順の (played_at, final_score)。
 //   - stats      : 確定ラン数 / ベスト / 平均。
-//   - frequency  : upgrade catalog ごとの取得回数（表示名付き）。
-//   - weekByCatalog / orderByCatalog : catalog ごとの週・取得手目(upgrade_order)分布。
+//   - frequency  : upgrade catalog ごとの取得回数（表示名付き。タイムラインの行順に使用）。
 //   - timelineRuns / timeline : 直近 TIMELINE_RUN_LIMIT 件の確定 run のメタ（played_at 昇順・
 //                  スコア付き。取得ゼロの run も含む）と、upgrade 取得のフラット行
 //                  （run×catalog×week。取得タイムライン用）。
@@ -29,7 +28,7 @@ export async function getAnalysisSummary(ownerId: string) {
     eq(upgradeEntry.entryType, 'upgrade'),
   )
 
-  const [scoreTrend, statsRows, frequency, weekByCatalog, orderByCatalog] = await Promise.all([
+  const [scoreTrend, statsRows, frequency] = await Promise.all([
     db
       .select({ playedAt: run.playedAt, finalScore: run.finalScore })
       .from(run)
@@ -54,26 +53,6 @@ export async function getAnalysisSummary(ownerId: string) {
       .leftJoin(upgradeCatalog, eq(upgradeEntry.upgradeCatalogId, upgradeCatalog.id))
       .where(upgradeCond)
       .groupBy(upgradeEntry.upgradeCatalogId, upgradeCatalog.displayName),
-    db
-      .select({
-        catalogId: upgradeEntry.upgradeCatalogId,
-        week: upgradeEntry.weekIndex,
-        count: count(),
-      })
-      .from(upgradeEntry)
-      .innerJoin(run, eq(upgradeEntry.runId, run.id))
-      .where(upgradeCond)
-      .groupBy(upgradeEntry.upgradeCatalogId, upgradeEntry.weekIndex),
-    db
-      .select({
-        catalogId: upgradeEntry.upgradeCatalogId,
-        order: upgradeEntry.upgradeOrder,
-        count: count(),
-      })
-      .from(upgradeEntry)
-      .innerJoin(run, eq(upgradeEntry.runId, run.id))
-      .where(upgradeCond)
-      .groupBy(upgradeEntry.upgradeCatalogId, upgradeEntry.upgradeOrder),
   ])
 
   // 取得タイムライン: 直近 TIMELINE_RUN_LIMIT 件の確定 run。
@@ -118,8 +97,6 @@ export async function getAnalysisSummary(ownerId: string) {
     },
     scoreTrend,
     frequency: [...frequency].sort((a, b) => b.count - a.count),
-    weekByCatalog,
-    orderByCatalog,
     timelineRuns,
     timeline,
     timelineRunLimit: TIMELINE_RUN_LIMIT,

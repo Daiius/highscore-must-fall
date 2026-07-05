@@ -3,12 +3,14 @@
 //   - スコアはランダム性があり run も 1日1回ではないため、折れ線でなく散布図で表示する。
 //   - 横軸は「実時間」⇄「順番（run を等間隔に詰める）」を切り替え可能（日が空くと
 //     不自然に横長になる問題への対処。散布図・ドットマトリクス共通）。
-//   - アップグレード取得タイムライン（2モード）:
-//     - アップグレード別: y=カタログ名 × x=run のドットマトリクス。色 = 系統（週はツールチップ）。
-//     - 系統構成（実験）: run ごとのカードに週×系統の取得数を積み上げ棒で表示。
+//   - アップグレード取得タイムライン（2モード。既定は系統構成）:
+//     - 系統構成: run ごとのカードに週×系統の取得数を積み上げ棒で表示。
 //       並び順を時系列 ⇄ スコア順で切替（スコア要因の分析には日付軸が不要という要件。
 //       スコア順に並べ、構成の勾配を目視で掴む）。
-//   - 取得頻度・タイミング分布は検討のため温存（頻度はほぼ全部1で意味が薄い認識）。
+//       カードは縦1列（上→下の一本道 = 読み順が一意。グリッドだと行/列どちらに読むか迷う）。
+//       左端アクセントの色 = スコア低→高（暗→明の indigo 単一 hue ランプ。散布図の
+//       スコア色と同系統。dataviz ordinal validator で dark surface に対し PASS）。
+//     - アップグレード別: y=カタログ名 × x=run のドットマトリクス。色 = 系統（週はツールチップ）。
 
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -57,8 +59,6 @@ interface Summary {
   stats: { count: number; best: number; avg: number }
   scoreTrend: { playedAt: string; finalScore: number | null }[]
   frequency: { catalogId: string | null; name: string | null; count: number }[]
-  weekByCatalog: { catalogId: string | null; week: number; count: number }[]
-  orderByCatalog: { catalogId: string | null; order: number | null; count: number }[]
   timelineRuns: TimelineRunMeta[]
   timeline: TimelineRow[]
   timelineRunLimit: number
@@ -66,8 +66,8 @@ interface Summary {
 
 /** 横軸モード。time=実時間 / seq=run を等間隔に詰める。 */
 type AxisMode = 'time' | 'seq'
-/** タイムラインの表示モード。name=アップグレード別 / composition=系統構成（実験）。 */
-type TimelineMode = 'name' | 'composition'
+/** タイムラインの表示モード。composition=系統構成（既定） / name=アップグレード別。 */
+type TimelineMode = 'composition' | 'name'
 /** 系統構成カードの並び順。time=時系列 / score=スコア降順。 */
 type CompositionSort = 'time' | 'score'
 
@@ -86,14 +86,24 @@ const SERIES_COLORS: Record<UpgradeSeries, string> = {
   unknown: '#64748b',
 }
 
+/** スコアの基準色。散布図の点とランプ中央で共用し、両者の同系統性をコードで担保する。 */
+const SCORE_COLOR = '#818cf8'
+/**
+ * スコアの sequential ランプ（低→高 = 暗→明、indigo 単一 hue）。
+ * min-max を5段に量子化してカード左端のアクセントに使う。散布図のスコア点（SCORE_COLOR）と
+ * 同系統に揃え、系統カテゴリ色とは役割・位置（アクセント bar vs 積み上げ棒）で分離する。
+ */
+const SCORE_RAMP = ['#4338ca', '#6366f1', SCORE_COLOR, '#a5b4fc', '#c7d2fe'] as const
+/** スコア不明（null）run はアクセント無し（どの色でもランプの位置として誤読されるため）。 */
+const SCORE_UNKNOWN_COLOR = 'transparent'
+
 export function Analysis() {
   const { clearSession } = useAuth()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
   const [axisMode, setAxisMode] = useState<AxisMode>('time')
-  const [timelineMode, setTimelineMode] = useState<TimelineMode>('name')
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>('composition')
   const [compositionSort, setCompositionSort] = useState<CompositionSort>('time')
 
   useEffect(() => {
@@ -151,7 +161,7 @@ export function Analysis() {
   }, [summary])
 
   const timelineNames = useMemo(() => {
-    // 行（カタログ名）は取得頻度の降順 = 頻度グラフと同じ並びで馴染ませる。
+    // 行（カタログ名）は取得頻度の降順（server の frequency はこの行順のためにある）。
     const inTimeline = new Set(
       (summary?.timeline ?? []).map((r) => r.name).filter((n): n is string => n != null),
     )
@@ -202,10 +212,16 @@ export function Analysis() {
 
   // 系統構成カード: run メタ起点（取得ゼロ run も空カードで出す）に、
   // 実在する week_index をそのまま週×系統で集計する（W5+ への畳み込みはしない —
-  // 長期 run の取得タイミングが失われるため。カード内の棒本数は週数に応じて可変）。
+  // 長期 run の取得タイミングが失われるため）。週軸は W1〜全 run の最大週にゼロ埋めして揃える
+  // （同じ週がカード間で同じ横位置に来ないと、縦に並べた構成比較が成立しないため。
+  // 起点をデータ最小週でなく W1 に固定するのは「W1 で何も取らなかった」と
+  // 「W1 が存在しない」の混同を避けるため）。yMax は全カード共通の Y 上限
+  // （カードごとの auto domain だと同じ取得数が別の高さに描かれ、積み上げ高さの比較が壊れる）。
   const composition = useMemo(() => {
     const present = new Set<UpgradeSeries>()
     const weeksByRun = new Map<string, Map<number, Partial<Record<UpgradeSeries, number>>>>()
+    let minWeek = 1
+    let maxWeek = Number.NEGATIVE_INFINITY
     for (const row of summary?.timeline ?? []) {
       if (row.name == null || !timelineRuns.has(row.runId)) continue
       const series = upgradeSeriesOf(row.name)
@@ -215,22 +231,33 @@ export function Analysis() {
       counts[series] = (counts[series] ?? 0) + 1
       weeks.set(row.week, counts)
       weeksByRun.set(row.runId, weeks)
+      minWeek = Math.min(minWeek, row.week)
+      maxWeek = Math.max(maxWeek, row.week)
     }
     const seriesPresent = UPGRADE_SERIES_KEYS.filter((k) => present.has(k))
+    const weekRange = Number.isFinite(maxWeek)
+      ? Array.from({ length: maxWeek - minWeek + 1 }, (_, i) => minWeek + i)
+      : []
+    let yMax = 1
+    for (const weeks of weeksByRun.values()) {
+      for (const counts of weeks.values()) {
+        const total = Object.values(counts).reduce((s, n) => s + (n ?? 0), 0)
+        yMax = Math.max(yMax, total)
+      }
+    }
     const cards = [...timelineRuns.entries()].map(([runId, meta]) => ({
       runId,
       playedAt: meta.playedAt,
       t: meta.t,
       finalScore: meta.finalScore,
-      weeks: [...(weeksByRun.get(runId) ?? new Map()).entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([week, counts]) => {
-          const rec: Record<string, number | string> = { w: `W${week}` }
-          for (const k of seriesPresent) rec[k] = counts[k] ?? 0
-          return rec
-        }),
+      weeks: weekRange.map((week) => {
+        const counts = weeksByRun.get(runId)?.get(week) ?? {}
+        const rec: Record<string, number | string> = { w: `W${week}` }
+        for (const k of seriesPresent) rec[k] = counts[k] ?? 0
+        return rec
+      }),
     }))
-    return { seriesPresent, cards }
+    return { seriesPresent, cards, yMax }
   }, [summary, timelineRuns])
 
   const compositionCards = useMemo(() => {
@@ -238,6 +265,23 @@ export function Analysis() {
     if (compositionSort === 'time') return cards.sort((a, b) => a.t - b.t)
     return cards.sort((a, b) => (b.finalScore ?? -1) - (a.finalScore ?? -1))
   }, [composition, compositionSort])
+
+  // スコア → ランプ色（表示中 run の min-max を SCORE_RAMP.length 段に量子化）。
+  const scoreColor = useMemo(() => {
+    const scores = composition.cards.map((c) => c.finalScore).filter((s): s is number => s != null)
+    const min = Math.min(...scores)
+    const max = Math.max(...scores)
+    return (score: number | null): string => {
+      if (score == null) return SCORE_UNKNOWN_COLOR
+      // 全スコア同値（run 1件を含む）は高低の根拠が無いので中央の基準色にする。
+      if (max === min) return SCORE_COLOR
+      const idx = Math.min(
+        SCORE_RAMP.length - 1,
+        Math.floor(((score - min) / (max - min)) * SCORE_RAMP.length),
+      )
+      return SCORE_RAMP[idx] ?? SCORE_COLOR
+    }
+  }, [composition])
 
   const seqTickToDate = useMemo(() => {
     const arr = [...timelineRuns.values()]
@@ -255,18 +299,6 @@ export function Analysis() {
         確定済みのランがまだありません。インポートで確定保存すると分析できます。
       </p>
     )
-
-  const frequency = summary.frequency
-  const selectedId = selected ?? frequency[0]?.catalogId ?? null
-  const selectedName = frequency.find((u) => u.catalogId === selectedId)?.name ?? ''
-  const orderDist = summary.orderByCatalog
-    .filter((d) => d.catalogId === selectedId && d.order != null)
-    .map((d) => ({ order: `${d.order}手目`, orderNum: d.order as number, count: d.count }))
-    .sort((a, b) => a.orderNum - b.orderNum)
-  const weekDist = summary.weekByCatalog
-    .filter((d) => d.catalogId === selectedId)
-    .map((d) => ({ week: `WEEK ${d.week}`, weekNum: d.week, count: d.count }))
-    .sort((a, b) => a.weekNum - b.weekNum)
 
   const scoreXProps =
     axisMode === 'time'
@@ -318,7 +350,7 @@ export function Analysis() {
                 return p?.playedAt ? fmtDateTime(p.playedAt) : ''
               }}
             />
-            <Scatter data={scorePoints} fill="#818cf8" isAnimationActive={false} />
+            <Scatter data={scorePoints} fill={SCORE_COLOR} isAnimationActive={false} />
           </ScatterChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -328,14 +360,14 @@ export function Analysis() {
           <h2 className="font-semibold text-slate-200 text-sm">アップグレード取得タイムライン</h2>
           <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
             <ModeToggle
+              label="系統構成"
+              active={timelineMode === 'composition'}
+              onClick={() => setTimelineMode('composition')}
+            />
+            <ModeToggle
               label="アップグレード別"
               active={timelineMode === 'name'}
               onClick={() => setTimelineMode('name')}
-            />
-            <ModeToggle
-              label="系統構成（実験）"
-              active={timelineMode === 'composition'}
-              onClick={() => setTimelineMode('composition')}
             />
           </div>
         </div>
@@ -395,7 +427,8 @@ export function Analysis() {
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-slate-500 text-xs">
-                run ごとの週×系統の取得数（積み上げ）。スコア順に並べて
+                run ごとの週×系統の取得数（積み上げ）。上→下の一列で並び、左端の色は
+                スコアの低（暗）→高（明）。スコア順に並べて
                 「どの週にどの系統を取ると伸びるか」を目視する。分類は攻略ガイド由来の暫定。
                 表示は直近 {summary.timelineRunLimit} ランまで。
               </p>
@@ -423,99 +456,52 @@ export function Analysis() {
                 </span>
               ))}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="max-h-[640px] space-y-2 overflow-y-auto rounded-lg border border-slate-700 bg-slate-800/30 p-2">
               {compositionCards.map((card) => (
                 <div
                   key={card.runId}
-                  className="rounded-lg border border-slate-700 bg-slate-800/30 p-3"
+                  className="flex items-center gap-3 rounded-lg border border-slate-700/60 border-l-4 bg-slate-800/40 p-2"
+                  style={{ borderLeftColor: scoreColor(card.finalScore) }}
                 >
-                  <div className="mb-1 flex items-baseline justify-between gap-2">
-                    <span className="font-mono text-sm text-white">
+                  <div className="w-28 shrink-0">
+                    <div className="font-mono text-sm text-white">
                       {card.finalScore?.toLocaleString() ?? '—'}
-                    </span>
-                    <span className="text-slate-500 text-xs">{fmtDateTime(card.playedAt)}</span>
+                    </div>
+                    <div className="text-slate-500 text-xs">{fmtDateTime(card.playedAt)}</div>
                   </div>
-                  <ResponsiveContainer width="100%" height={140}>
-                    <BarChart data={card.weeks} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#33415577" vertical={false} />
-                      <XAxis dataKey="w" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                      <YAxis allowDecimals={false} stroke="#94a3b8" fontSize={10} width={24} />
-                      <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
-                        cursor={{ fill: '#33415533' }}
-                        formatter={(v: number, key: string) => [
-                          v,
-                          UPGRADE_SERIES_LABELS[key as UpgradeSeries] ?? key,
-                        ]}
-                      />
-                      {composition.seriesPresent.map((k) => (
-                        <Bar
-                          key={k}
-                          dataKey={k}
-                          stackId="s"
-                          fill={SERIES_COLORS[k]}
-                          stroke="#0f172a"
-                          strokeWidth={1}
-                          isAnimationActive={false}
+                  <div className="min-w-0 flex-1">
+                    <ResponsiveContainer width="100%" height={100}>
+                      <BarChart data={card.weeks} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#33415577" vertical={false} />
+                        <XAxis dataKey="w" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                        <YAxis
+                          allowDecimals={false}
+                          domain={[0, composition.yMax]}
+                          stroke="#94a3b8"
+                          fontSize={10}
+                          width={24}
                         />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
+                        <Tooltip content={<CompositionTooltip />} cursor={{ fill: '#33415533' }} />
+                        {composition.seriesPresent.map((k) => (
+                          <Bar
+                            key={k}
+                            dataKey={k}
+                            stackId="s"
+                            fill={SERIES_COLORS[k]}
+                            stroke="#0f172a"
+                            strokeWidth={1}
+                            maxBarSize={56}
+                            isAnimationActive={false}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               ))}
             </div>
           </>
         )}
-      </section>
-
-      <ChartCard title="アップグレード取得頻度（上位15）">
-        <ResponsiveContainer
-          width="100%"
-          height={Math.max(240, Math.min(frequency.length, 15) * 26)}
-        >
-          <BarChart
-            data={frequency.slice(0, 15)}
-            layout="vertical"
-            margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis type="number" stroke="#94a3b8" fontSize={12} allowDecimals={false} />
-            <YAxis
-              type="category"
-              dataKey="name"
-              stroke="#94a3b8"
-              fontSize={11}
-              width={180}
-              tick={{ fill: '#cbd5e1' }}
-            />
-            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#33415533' }} />
-            <Bar dataKey="count" fill="#34d399" radius={[0, 4, 4, 0]} isAnimationActive={false} />
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartCard>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-semibold text-slate-200 text-sm">取得タイミング分布</h2>
-          <select
-            value={selectedId ?? ''}
-            onChange={(e) => setSelected(e.target.value)}
-            className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-200 text-sm"
-          >
-            {frequency.map((u) => (
-              <option key={u.catalogId ?? ''} value={u.catalogId ?? ''}>
-                {u.name}（{u.count}）
-              </option>
-            ))}
-          </select>
-        </div>
-        <p className="text-slate-500 text-xs">
-          「{selectedName}」が全体で何手目・何週に取られたかの分布（catalog ID で集計）。
-        </p>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <TimingChart data={orderDist} dataKey="order" fill="#fbbf24" caption="取得順（何手目）" />
-          <TimingChart data={weekDist} dataKey="week" fill="#38bdf8" caption="取得週" />
-        </div>
       </section>
     </div>
   )
@@ -546,6 +532,34 @@ function ModeToggle({
   )
 }
 
+/**
+ * 系統構成カードのツールチップ。取得ゼロの週（ゼロ埋め分を含む）では何も出さない —
+ * 全系統 0 の列挙は「その週まで生存して何も取らなかった」と誤読させるため。
+ */
+function CompositionTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: { dataKey?: string | number; value?: number | string; color?: string }[]
+  label?: string | number
+}) {
+  const rows = (payload ?? []).filter((p) => typeof p.value === 'number' && p.value > 0)
+  if (!active || rows.length === 0) return null
+  return (
+    <div style={TOOLTIP_STYLE} className="px-3 py-2 text-sm">
+      <div className="text-slate-400 text-xs">{label}</div>
+      {rows.map((p) => (
+        <div key={String(p.dataKey)} className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: p.color }} />
+          {UPGRADE_SERIES_LABELS[p.dataKey as UpgradeSeries] ?? String(p.dataKey)}: {p.value}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TimelineTooltip({
   active,
   payload,
@@ -564,33 +578,6 @@ function TimelineTooltip({
       <div className="text-slate-400 text-xs">
         {p.weeks.map((w) => `WEEK ${w}`).join(', ')} / {fmtDateTime(p.playedAt)}
       </div>
-    </div>
-  )
-}
-
-function TimingChart({
-  data,
-  dataKey,
-  fill,
-  caption,
-}: {
-  data: { count: number }[]
-  dataKey: string
-  fill: string
-  caption: string
-}) {
-  return (
-    <div className="rounded-lg border border-slate-700 bg-slate-800/30 p-2">
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-          <XAxis dataKey={dataKey} stroke="#94a3b8" fontSize={11} />
-          <YAxis stroke="#94a3b8" fontSize={12} width={40} allowDecimals={false} />
-          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#33415533' }} />
-          <Bar dataKey="count" fill={fill} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-        </BarChart>
-      </ResponsiveContainer>
-      <p className="pb-1 text-center text-slate-500 text-xs">{caption}</p>
     </div>
   )
 }

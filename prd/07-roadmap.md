@@ -13,7 +13,7 @@
 - **検証/レビュー**: `shared` の Zod + 整合チェック（`apocalypse_bonus == Σreward.points`）。warning 表示・ドラフト保存・確定。
 - **画像**: スクショ証跡の添付・保存（各画面1枚・最大3枚、`BlobStore` ローカル、認証配信）。
 - **閲覧**: run 一覧/詳細、自己ベスト・自分の run 内ランキング。
-- **記述分析**: スコア推移 / アップグレード頻度（全体・週別）/ 取得タイミング分布。
+- **記述分析**: スコア散布図 / アップグレード取得タイムライン（系統構成・アップグレード別。[06](./06-analysis.md) §1.2）。
 - **カタログ管理（最小）**: 未検証一覧・verify・マージ。
 - **基盤**: monorepo（shared/database/server/web）、MySQL、docker compose watch、Biome/Vitest、git 2.55+ hooks。
 
