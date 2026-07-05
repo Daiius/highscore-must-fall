@@ -19,7 +19,7 @@ describe('parseExtractionOutput', () => {
   })
 
   it('コードフェンスで包まれていても剥がして受理する', () => {
-    const extraction = parseExtractionOutput('```json\n' + exampleJson + '\n```')
+    const extraction = parseExtractionOutput(`\`\`\`json\n${exampleJson}\n\`\`\``)
     expect(extraction.reward_ledger).toHaveLength(13)
   })
 

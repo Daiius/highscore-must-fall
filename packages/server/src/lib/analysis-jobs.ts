@@ -270,7 +270,7 @@ export async function completeJob(
     .where(eq(analysisJob.runId, runId))
     .limit(1)
   const job = jobRows[0]
-  if (!job || job.status !== 'running') return { kind: 'not_running' }
+  if (job?.status !== 'running') return { kind: 'not_running' }
   const ownerId = job.ownerId
 
   const canonical = toCanonicalRunRecord(extractionToFlatRecord(extraction))
