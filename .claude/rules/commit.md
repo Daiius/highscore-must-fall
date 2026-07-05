@@ -21,4 +21,5 @@
 - **マージは merge commit**（`gh pr merge --merge`）。**squash はしない**
   （ブランチのコミットは 1コミット1論点で積んでいるため、履歴をそのまま残す）。
 - **`検証` セクションは実行済みのゲートだけにチェックを入れる**（未実行を「済」と偽らない）。最低限 typecheck / biome check / test。
+- **レビュー bot**: PR に `@highscore-must-fall-reviewer review` とコメントすると自動レビューが走る（通常10分以内に応答）。マージ前に必ず1回は実行し、指摘に対応 → 再度 `review` コメント、のループで指摘が無くなってからマージする。
 - Co-Author / PR バイラインは `settings.json` の `attribution` で抑制済み（本文へ署名を書かない）。
