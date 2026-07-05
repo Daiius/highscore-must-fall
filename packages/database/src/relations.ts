@@ -5,6 +5,7 @@
 import { defineRelations } from 'drizzle-orm'
 import {
   account,
+  analysisJob,
   catalogAlias,
   rewardCatalog,
   rewardEntry,
@@ -32,6 +33,7 @@ export const relations = defineRelations(
     rewardCatalog,
     catalogAlias,
     runImage,
+    analysisJob,
   },
   (r) => ({
     // --- 認証（better-auth）---
@@ -54,6 +56,7 @@ export const relations = defineRelations(
       upgradeEntries: r.many.upgradeEntry(),
       rewardEntries: r.many.rewardEntry(),
       images: r.many.runImage(),
+      analysisJob: r.one.analysisJob({ from: r.run.id, to: r.analysisJob.runId }),
     },
     runPayload: {
       run: r.one.run({ from: r.runPayload.runId, to: r.run.id }),
@@ -74,6 +77,9 @@ export const relations = defineRelations(
     },
     runImage: {
       run: r.one.run({ from: r.runImage.runId, to: r.run.id }),
+    },
+    analysisJob: {
+      run: r.one.run({ from: r.analysisJob.runId, to: r.run.id }),
     },
 
     // --- カタログ（グローバル）---
