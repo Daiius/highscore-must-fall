@@ -9,6 +9,8 @@
 //
 // 後続 PR で run 一覧/詳細・catalog・画像配信のルートをこの route チェーンに足していく。
 
+import { db, user } from 'database'
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth, isDevLoginEnabled, webOrigin } from './lib/auth'
@@ -17,6 +19,8 @@ import { analysisRoute } from './routes/analysis'
 import { catalogRoute } from './routes/catalog'
 import { ingestRoute } from './routes/ingest'
 import { runsRoute } from './routes/runs'
+import { screenshotsRoute } from './routes/screenshots'
+import { workerRoute } from './routes/worker'
 
 export const app = new Hono<AppEnv>()
 
@@ -60,6 +64,8 @@ if (isDevLoginEnabled) {
     } catch {
       // 既存ユーザー。
     }
+    // dev ユーザーは admin にする（スクショ自動解析の E2E を dev ログインで通すため。development 限定）。
+    await db.update(user).set({ role: 'admin' }).where(eq(user.email, credentials.email))
     return auth.api.signInEmail({
       body: { email: credentials.email, password: credentials.password },
       asResponse: true,
@@ -74,6 +80,8 @@ const route = app
   .route('/api/runs', runsRoute)
   .route('/api/catalog', catalogRoute)
   .route('/api/analysis', analysisRoute)
+  .route('/api/screenshots', screenshotsRoute)
+  .route('/api/worker', workerRoute)
 
 /** RPC 型（web の hono/client から参照する）。 */
 export type AppType = typeof route

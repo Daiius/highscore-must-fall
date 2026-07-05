@@ -43,7 +43,7 @@ export interface SaveRunResult {
 }
 
 /** drizzle トランザクションハンドル（db.transaction のコールバック引数型）。 */
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /**
  * upgrade 名（正規形）を upgrade_catalog の id へ解決する。
@@ -139,7 +139,7 @@ function mustGet(map: Map<string, string>, key: string): string {
 /** InnoDB のデッドロック(1213)・ロック待ちタイムアウト(1205)は限定的に再試行する。 */
 const RETRYABLE_ERRNOS = new Set([1213, 1205])
 
-async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+export async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   let lastErr: unknown
   for (let i = 0; i < attempts; i++) {
     try {
@@ -157,6 +157,79 @@ async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise
 }
 
 /**
+ * カタログ解決 + upgrade_entry / reward_entry の書き込み（既存 run への追記部分）。
+ * saveRun（新規 run 保存）とスクショ自動解析の completeJob（既存 run への反映）が共有する。
+ * 呼び出し側が run / run_payload 行と、（再反映時は）既存エントリの削除を用意すること。
+ */
+export async function writeRunChildren(
+  tx: Tx,
+  args: { record: RunRecord; runId: string; ownerId: string },
+): Promise<void> {
+  const { record, runId, ownerId } = args
+  // 未知カタログの upsert を run 間で決定的な順序（canonical_key 昇順・upgrade→reward）で行うために、
+  // 事前に名前を dedupe & ソートしておく。ロック取得順を全 run で揃え、逆順ロックによるデッドロックを防ぐ。
+  const upgradeKeys = [
+    ...new Set(record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : []))),
+  ].sort()
+  const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))].sort()
+
+  // カタログを決定的順序で解決して id マップを作る（ここでロックが確定する）。
+  const upgradeIdByKey = new Map<string, string>()
+  for (const key of upgradeKeys) {
+    upgradeIdByKey.set(key, await resolveUpgradeCatalogId(tx, key, runId))
+  }
+  const rewardIdByKey = new Map<string, string>()
+  for (const key of rewardKeys) {
+    rewardIdByKey.set(key, await resolveRewardCatalogId(tx, key, runId))
+  }
+
+  // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番。catalog id はマップ引き）。
+  let upgradeOrder = 0
+  for (const entry of record.upgrade_history) {
+    if (entry.entry_type === 'upgrade') {
+      upgradeOrder += 1
+      await tx.insert(upgradeEntry).values({
+        id: randomUUID(),
+        ownerId,
+        runId,
+        weekIndex: entry.week_index,
+        orderInWeek: entry.order_in_week,
+        entryType: 'upgrade',
+        upgradeCatalogId: mustGet(upgradeIdByKey, entry.name),
+        upgradeOrder,
+      })
+    } else {
+      await tx.insert(upgradeEntry).values({
+        id: randomUUID(),
+        ownerId,
+        runId,
+        weekIndex: entry.week_index,
+        orderInWeek: entry.order_in_week,
+        entryType: 'reroll',
+        flavorText: entry.flavor_text,
+      })
+    }
+  }
+
+  // reward_entry。
+  for (const r of record.reward_ledger) {
+    await tx.insert(rewardEntry).values({
+      id: randomUUID(),
+      ownerId,
+      runId,
+      rewardCatalogId: mustGet(rewardIdByKey, r.name),
+      count: r.count,
+      points: r.points,
+    })
+  }
+}
+
+/** upgrade_history から reroll 数を数える（run.reroll_count の非正規化用）。 */
+export function countRerolls(record: RunRecord): number {
+  return record.upgrade_history.filter((e) => e.entry_type === 'reroll').length
+}
+
+/**
  * 検証済み RunRecord を保存する。呼び出し側は事前に shared で検証し、
  * confirmed なら error 無しを保証していること（ここでは DB 書き込みに専念する）。
  */
@@ -164,14 +237,6 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
   const { record, ownerId, status, source } = input
   const runId = randomUUID()
   const playedAt = input.playedAt ?? (record.played_at ? new Date(record.played_at) : new Date())
-  const rerollCount = record.upgrade_history.filter((e) => e.entry_type === 'reroll').length
-
-  // 未知カタログの upsert を run 間で決定的な順序（canonical_key 昇順・upgrade→reward）で行うために、
-  // 事前に名前を dedupe & ソートしておく。ロック取得順を全 run で揃え、逆順ロックによるデッドロックを防ぐ。
-  const upgradeKeys = [
-    ...new Set(record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : []))),
-  ].sort()
-  const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))].sort()
 
   await withDeadlockRetry(() =>
     db.transaction(async (tx) => {
@@ -189,7 +254,7 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
         aliensDefeated: record.result.aliens_defeated,
         nukesLaunched: record.result.nukes_launched,
         apocalypseBonus: record.result.apocalypse_bonus,
-        rerollCount,
+        rerollCount: countRerolls(record),
       })
 
       // run_payload（正規スキーマ全体を丸ごと温存）。
@@ -201,55 +266,7 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
         sourceNote: input.sourceNote,
       })
 
-      // カタログを決定的順序で解決して id マップを作る（ここでロックが確定する）。
-      const upgradeIdByKey = new Map<string, string>()
-      for (const key of upgradeKeys) {
-        upgradeIdByKey.set(key, await resolveUpgradeCatalogId(tx, key, runId))
-      }
-      const rewardIdByKey = new Map<string, string>()
-      for (const key of rewardKeys) {
-        rewardIdByKey.set(key, await resolveRewardCatalogId(tx, key, runId))
-      }
-
-      // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番。catalog id はマップ引き）。
-      let upgradeOrder = 0
-      for (const entry of record.upgrade_history) {
-        if (entry.entry_type === 'upgrade') {
-          upgradeOrder += 1
-          await tx.insert(upgradeEntry).values({
-            id: randomUUID(),
-            ownerId,
-            runId,
-            weekIndex: entry.week_index,
-            orderInWeek: entry.order_in_week,
-            entryType: 'upgrade',
-            upgradeCatalogId: mustGet(upgradeIdByKey, entry.name),
-            upgradeOrder,
-          })
-        } else {
-          await tx.insert(upgradeEntry).values({
-            id: randomUUID(),
-            ownerId,
-            runId,
-            weekIndex: entry.week_index,
-            orderInWeek: entry.order_in_week,
-            entryType: 'reroll',
-            flavorText: entry.flavor_text,
-          })
-        }
-      }
-
-      // reward_entry。
-      for (const r of record.reward_ledger) {
-        await tx.insert(rewardEntry).values({
-          id: randomUUID(),
-          ownerId,
-          runId,
-          rewardCatalogId: mustGet(rewardIdByKey, r.name),
-          count: r.count,
-          points: r.points,
-        })
-      }
+      await writeRunChildren(tx, { record, runId, ownerId })
     }),
   )
 
