@@ -11,7 +11,6 @@
 //       左端アクセントの色 = スコア低→高（暗→明の indigo 単一 hue ランプ。散布図の
 //       スコア色と同系統。dataviz ordinal validator で dark surface に対し PASS）。
 //     - アップグレード別: y=カタログ名 × x=run のドットマトリクス。色 = 系統（週はツールチップ）。
-//   - 旧「取得頻度」「取得タイミング分布」グラフはタイムラインが役割を兼ねるため削除済み。
 
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -87,14 +86,16 @@ const SERIES_COLORS: Record<UpgradeSeries, string> = {
   unknown: '#64748b',
 }
 
+/** スコアの基準色。散布図の点とランプ中央で共用し、両者の同系統性をコードで担保する。 */
+const SCORE_COLOR = '#818cf8'
 /**
  * スコアの sequential ランプ（低→高 = 暗→明、indigo 単一 hue）。
- * min-max を5段に量子化してカード左端のアクセントに使う。散布図のスコア点（indigo）と
+ * min-max を5段に量子化してカード左端のアクセントに使う。散布図のスコア点（SCORE_COLOR）と
  * 同系統に揃え、系統カテゴリ色とは役割・位置（アクセント bar vs 積み上げ棒）で分離する。
  */
-const SCORE_RAMP = ['#4338ca', '#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe'] as const
-/** スコア不明（null）run のアクセント色。ランプに混ざらない無彩色。 */
-const SCORE_UNKNOWN_COLOR = '#475569'
+const SCORE_RAMP = ['#4338ca', '#6366f1', SCORE_COLOR, '#a5b4fc', '#c7d2fe'] as const
+/** スコア不明（null）run はアクセント無し（どの色でもランプの位置として誤読されるため）。 */
+const SCORE_UNKNOWN_COLOR = 'transparent'
 
 export function Analysis() {
   const { clearSession } = useAuth()
@@ -160,7 +161,7 @@ export function Analysis() {
   }, [summary])
 
   const timelineNames = useMemo(() => {
-    // 行（カタログ名）は取得頻度の降順 = 頻度グラフと同じ並びで馴染ませる。
+    // 行（カタログ名）は取得頻度の降順（server の frequency はこの行順のためにある）。
     const inTimeline = new Set(
       (summary?.timeline ?? []).map((r) => r.name).filter((n): n is string => n != null),
     )
@@ -211,12 +212,15 @@ export function Analysis() {
 
   // 系統構成カード: run メタ起点（取得ゼロ run も空カードで出す）に、
   // 実在する week_index をそのまま週×系統で集計する（W5+ への畳み込みはしない —
-  // 長期 run の取得タイミングが失われるため）。週軸は全 run 共通の範囲にゼロ埋めして揃える
-  // （同じ週がカード間で同じ横位置に来ないと、縦に並べた構成比較が成立しないため）。
+  // 長期 run の取得タイミングが失われるため）。週軸は W1〜全 run の最大週にゼロ埋めして揃える
+  // （同じ週がカード間で同じ横位置に来ないと、縦に並べた構成比較が成立しないため。
+  // 起点をデータ最小週でなく W1 に固定するのは「W1 で何も取らなかった」と
+  // 「W1 が存在しない」の混同を避けるため）。yMax は全カード共通の Y 上限
+  // （カードごとの auto domain だと同じ取得数が別の高さに描かれ、積み上げ高さの比較が壊れる）。
   const composition = useMemo(() => {
     const present = new Set<UpgradeSeries>()
     const weeksByRun = new Map<string, Map<number, Partial<Record<UpgradeSeries, number>>>>()
-    let minWeek = Number.POSITIVE_INFINITY
+    let minWeek = 1
     let maxWeek = Number.NEGATIVE_INFINITY
     for (const row of summary?.timeline ?? []) {
       if (row.name == null || !timelineRuns.has(row.runId)) continue
@@ -231,9 +235,16 @@ export function Analysis() {
       maxWeek = Math.max(maxWeek, row.week)
     }
     const seriesPresent = UPGRADE_SERIES_KEYS.filter((k) => present.has(k))
-    const weekRange = Number.isFinite(minWeek)
+    const weekRange = Number.isFinite(maxWeek)
       ? Array.from({ length: maxWeek - minWeek + 1 }, (_, i) => minWeek + i)
       : []
+    let yMax = 1
+    for (const weeks of weeksByRun.values()) {
+      for (const counts of weeks.values()) {
+        const total = Object.values(counts).reduce((s, n) => s + (n ?? 0), 0)
+        yMax = Math.max(yMax, total)
+      }
+    }
     const cards = [...timelineRuns.entries()].map(([runId, meta]) => ({
       runId,
       playedAt: meta.playedAt,
@@ -246,7 +257,7 @@ export function Analysis() {
         return rec
       }),
     }))
-    return { seriesPresent, cards }
+    return { seriesPresent, cards, yMax }
   }, [summary, timelineRuns])
 
   const compositionCards = useMemo(() => {
@@ -262,12 +273,13 @@ export function Analysis() {
     const max = Math.max(...scores)
     return (score: number | null): string => {
       if (score == null) return SCORE_UNKNOWN_COLOR
-      if (max === min) return SCORE_RAMP[SCORE_RAMP.length - 1] ?? SCORE_UNKNOWN_COLOR
+      // 全スコア同値（run 1件を含む）は高低の根拠が無いので中央の基準色にする。
+      if (max === min) return SCORE_COLOR
       const idx = Math.min(
         SCORE_RAMP.length - 1,
         Math.floor(((score - min) / (max - min)) * SCORE_RAMP.length),
       )
-      return SCORE_RAMP[idx] ?? SCORE_UNKNOWN_COLOR
+      return SCORE_RAMP[idx] ?? SCORE_COLOR
     }
   }, [composition])
 
@@ -338,7 +350,7 @@ export function Analysis() {
                 return p?.playedAt ? fmtDateTime(p.playedAt) : ''
               }}
             />
-            <Scatter data={scorePoints} fill="#818cf8" isAnimationActive={false} />
+            <Scatter data={scorePoints} fill={SCORE_COLOR} isAnimationActive={false} />
           </ScatterChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -462,15 +474,14 @@ export function Analysis() {
                       <BarChart data={card.weeks} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#33415577" vertical={false} />
                         <XAxis dataKey="w" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                        <YAxis allowDecimals={false} stroke="#94a3b8" fontSize={10} width={24} />
-                        <Tooltip
-                          contentStyle={TOOLTIP_STYLE}
-                          cursor={{ fill: '#33415533' }}
-                          formatter={(v: number, key: string) => [
-                            v,
-                            UPGRADE_SERIES_LABELS[key as UpgradeSeries] ?? key,
-                          ]}
+                        <YAxis
+                          allowDecimals={false}
+                          domain={[0, composition.yMax]}
+                          stroke="#94a3b8"
+                          fontSize={10}
+                          width={24}
                         />
+                        <Tooltip content={<CompositionTooltip />} cursor={{ fill: '#33415533' }} />
                         {composition.seriesPresent.map((k) => (
                           <Bar
                             key={k}
@@ -518,6 +529,34 @@ function ModeToggle({
     >
       {label}
     </button>
+  )
+}
+
+/**
+ * 系統構成カードのツールチップ。取得ゼロの週（ゼロ埋め分を含む）では何も出さない —
+ * 全系統 0 の列挙は「その週まで生存して何も取らなかった」と誤読させるため。
+ */
+function CompositionTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: { dataKey?: string | number; value?: number | string; color?: string }[]
+  label?: string | number
+}) {
+  const rows = (payload ?? []).filter((p) => typeof p.value === 'number' && p.value > 0)
+  if (!active || rows.length === 0) return null
+  return (
+    <div style={TOOLTIP_STYLE} className="px-3 py-2 text-sm">
+      <div className="text-slate-400 text-xs">{label}</div>
+      {rows.map((p) => (
+        <div key={String(p.dataKey)} className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: p.color }} />
+          {UPGRADE_SERIES_LABELS[p.dataKey as UpgradeSeries] ?? String(p.dataKey)}: {p.value}
+        </div>
+      ))}
+    </div>
   )
 }
 
