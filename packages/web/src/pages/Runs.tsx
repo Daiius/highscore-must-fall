@@ -3,6 +3,7 @@
 import { Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { client } from '../api'
+import { AnalysisBadge, type AnalysisStatus, isAnalysisActive } from '../components/AnalysisBadge'
 import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../lib/auth'
 
@@ -14,6 +15,7 @@ interface RunRow {
   daysSurvived: number | null
   apocalypseBonus: number | null
   rerollCount: number
+  analysisStatus: AnalysisStatus | null
 }
 
 const PAGE_SIZE = 50
@@ -27,8 +29,8 @@ export function Runs() {
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(
-    async (nextOffset: number) => {
-      setLoading(true)
+    async (nextOffset: number, options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true)
       setError(null)
       try {
         const res = await client.api.runs.$get({
@@ -46,7 +48,7 @@ export function Runs() {
       } catch {
         setError('ラン一覧の取得に失敗しました。時間をおいて再読み込みしてください。')
       } finally {
-        setLoading(false)
+        if (!options?.silent) setLoading(false)
       }
     },
     [clearSession],
@@ -55,6 +57,13 @@ export function Runs() {
   useEffect(() => {
     void load(0)
   }, [load])
+
+  // 解析待ち/解析中の run が見えている間だけ、数秒間隔で静かに再取得する（prd/04 §9.5）。
+  useEffect(() => {
+    if (!runs.some((run) => isAnalysisActive(run.analysisStatus))) return
+    const timer = setInterval(() => void load(offset, { silent: true }), 5000)
+    return () => clearInterval(timer)
+  }, [runs, offset, load])
 
   const from = total === 0 ? 0 : offset + 1
   const to = Math.min(offset + PAGE_SIZE, total)
@@ -114,7 +123,10 @@ export function Runs() {
                     </td>
                     <td className="px-4 py-2 text-right font-mono">{run.rerollCount}</td>
                     <td className="px-4 py-2">
-                      <StatusBadge status={run.status} />
+                      <span className="flex items-center gap-1.5">
+                        <StatusBadge status={run.status} />
+                        <AnalysisBadge status={run.analysisStatus} />
+                      </span>
                     </td>
                   </tr>
                 ))}
