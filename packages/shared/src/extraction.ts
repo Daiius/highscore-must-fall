@@ -76,12 +76,30 @@ export type ScreenshotExtraction = z.infer<typeof ScreenshotExtractionSchema>
 export const SCREENSHOT_EXTRACTION_JSON_SCHEMA_ID =
   `utopia-must-fall/screenshot-extraction/${SCHEMA_VERSION}` as const
 
+/**
+ * JSON Schema の全 object ノードに `additionalProperties: false` を再帰的に付与する。
+ * OpenAI 系の構造化出力（codex `--output-schema` 等の strict モード）は、各 object に
+ * `additionalProperties: false` が明示されていないと `invalid_json_schema` で拒否する。
+ * z.toJSONSchema は既定でこれを出さないため、CLI へ渡す前に補う。両 CLI とも無害
+ * （未知キーを許さないのは元々望ましい挙動）なので CLI 中立のまま適用できる。
+ */
+function withNoAdditionalProperties<T>(node: T): T {
+  if (Array.isArray(node)) {
+    for (const item of node) withNoAdditionalProperties(item)
+  } else if (node !== null && typeof node === 'object') {
+    const obj = node as Record<string, unknown>
+    if (obj.type === 'object' && obj.properties) obj.additionalProperties = false
+    for (const value of Object.values(obj)) withNoAdditionalProperties(value)
+  }
+  return node
+}
+
 /** 抽出契約の JSON Schema（worker が LLM CLI の出力スキーマ強制に使う）。 */
 export function screenshotExtractionJsonSchema() {
-  return {
+  return withNoAdditionalProperties({
     ...z.toJSONSchema(ScreenshotExtractionSchema, { io: 'input' }),
     $id: SCREENSHOT_EXTRACTION_JSON_SCHEMA_ID,
-  }
+  })
 }
 
 /**

@@ -89,4 +89,21 @@ describe('screenshotExtractionJsonSchema', () => {
     expect(schema.$id).toBe(SCREENSHOT_EXTRACTION_JSON_SCHEMA_ID)
     expect(SCREENSHOT_EXTRACTION_JSON_SCHEMA_ID).toContain(SCHEMA_VERSION)
   })
+
+  it('全 object ノードに additionalProperties:false を持つ（OpenAI strict / codex 要件）', () => {
+    const schema = screenshotExtractionJsonSchema()
+    const objectNodes: Array<Record<string, unknown>> = []
+    const walk = (node: unknown) => {
+      if (Array.isArray(node)) return node.forEach(walk)
+      if (node !== null && typeof node === 'object') {
+        const obj = node as Record<string, unknown>
+        if (obj.type === 'object' && obj.properties) objectNodes.push(obj)
+        Object.values(obj).forEach(walk)
+      }
+    }
+    walk(schema)
+    // root + image + history entry + reward + result の 5 つ。
+    expect(objectNodes.length).toBeGreaterThanOrEqual(5)
+    for (const obj of objectNodes) expect(obj.additionalProperties).toBe(false)
+  })
 })
