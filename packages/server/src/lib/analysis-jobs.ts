@@ -20,7 +20,7 @@ import {
   upgradeCatalog,
   upgradeEntry,
 } from 'database'
-import { and, asc, eq, inArray, lt } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, lt } from 'drizzle-orm'
 import {
   type ExtractionSection,
   extractionToFlatRecord,
@@ -180,6 +180,7 @@ export async function getJobImage(runId: string, imageId: string, attempt: numbe
         eq(runImage.runId, runId),
         eq(analysisJob.status, 'running'),
         eq(analysisJob.attemptCount, attempt),
+        gt(analysisJob.leasedUntil, new Date()), // lease 超過（stale worker）には返さない。
       ),
     )
     .limit(1)
@@ -201,6 +202,7 @@ export async function failJob(runId: string, message: string, attempt: number): 
         eq(analysisJob.runId, runId),
         eq(analysisJob.status, 'running'),
         eq(analysisJob.attemptCount, attempt),
+        gt(analysisJob.leasedUntil, new Date()), // lease 超過の stale worker の報告は無視。
       ),
     )
   return header.affectedRows > 0
@@ -320,13 +322,30 @@ export async function completeJob(
       // この試行が今も有効か照合する（lease 超過→再キューで別 attempt が走っている stale worker の
       // 遅延応答、および並行 complete による上書きを弾く。prd/04 §9.5）。
       const jobRows = await tx
-        .select({ status: analysisJob.status, attemptCount: analysisJob.attemptCount })
+        .select({
+          status: analysisJob.status,
+          attemptCount: analysisJob.attemptCount,
+          leasedUntil: analysisJob.leasedUntil,
+        })
         .from(analysisJob)
         .where(eq(analysisJob.runId, runId))
         .limit(1)
         .for('update')
       const job = jobRows[0]
       if (job?.status !== 'running' || job.attemptCount !== attempt) {
+        return { kind: 'not_running' }
+      }
+      // lease 超過（30分超）の stale worker は結果を反映せず failed にする（prd/04 §9.5）。
+      if (job.leasedUntil == null || job.leasedUntil.getTime() <= Date.now()) {
+        await tx
+          .update(analysisJob)
+          .set({
+            status: 'failed',
+            lastError: '処理期限（lease）を超過しました。再解析してください。',
+            leasedUntil: null,
+            llmModel,
+          })
+          .where(eq(analysisJob.runId, runId))
         return { kind: 'not_running' }
       }
 
