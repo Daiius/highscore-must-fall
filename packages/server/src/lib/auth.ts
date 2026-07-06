@@ -49,6 +49,19 @@ export const auth = betterAuth({
     schema: { user, session, account, verification },
   }),
 
+  // user.role（機能ゲート。prd/05 §6）をセッションに載せる。input: false で
+  // サインアップ入力からの自己申告を禁止する（付与は DB 直接更新のみ）。
+  user: {
+    additionalFields: {
+      role: {
+        type: ['user', 'admin'] as string[],
+        required: false,
+        defaultValue: 'user',
+        input: false,
+      },
+    },
+  },
+
   // Google クレデンシャルが揃っている時だけソーシャルログインを有効化する。
   ...(hasGoogle && {
     socialProviders: {

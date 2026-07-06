@@ -3,18 +3,22 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "(Phase3) サーバ側 LLM 全自動分析のジョブ処理。MVP では非実装スキャフォルド。",
+  "description": "スクショ自動解析のジョブ処理。server の worker API を polling し、LLM CLI で画像→構造化して返す（prd/04 §9）。",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "daemon": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "database": "workspace:*",
+    "hono": "catalog:",
+    "server": "workspace:*",
     "shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

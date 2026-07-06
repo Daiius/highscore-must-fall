@@ -19,7 +19,7 @@
 | ファイル/貼り付けインポート | 全員（無料） | ユーザー自前（アプリ外） | Web UI（JSON/YAML） | **MVP** |
 | API | パワーユーザー | ユーザー自前 | HTTP（トークン認証） | Phase2（副産物） |
 | MCP | 無料 | ユーザー自前 | MCP ツール | Phase2（設計/接続口を先取り） |
-| 全自動 | 自分/有料 | **サーバ側**（worker） | 画像アップロード | Phase3 |
+| 全自動 | 自分（admin）/将来は有料 | **サーバ側**（worker） | 画像アップロード | **実装中**（Phase3 から前倒し。§9） |
 
 > いずれも生成物は「正規スキーマに準拠した1 run 記録」。LLM 非依存の下流は1つ。
 
@@ -28,7 +28,7 @@
 1. ユーザーは結果画面の3枚スクショを**自前の LLM**（手元の Claude/ChatGPT 等）で解析し、
    正規スキーマ準拠の **JSON（または YAML）** を得る（プロンプトは §6 のキットで配布）。
 2. アプリの**インポート画面**に JSON/YAML を貼り付け or ファイルアップロード。
-3. （任意）同じ run に**スクショ画像を添付**（証跡。§7）。MVP は各画面1枚・最大3枚。
+3. （任意）同じ run に**スクショ画像を添付**（証跡。§7）。1 run 最大5枚。
 4. サーバは `shared` の Zod で**検証**し、**整合チェック**（`apocalypse_bonus == Σreward.points` 等）を実行。
 5. **レビュー画面**で結果を表示。error は確定不可、**warning はインライン表示**して人間が修正。
    - スクショを添付していれば、横に並べて見比べながら直せる（読み取りミスの検証）。
@@ -81,7 +81,10 @@
 ## 7. 画像アップロード（証跡）
 
 - 1 run に **0〜複数枚**の `run_image` を任意添付（[03](./03-data-model.md) §3.7）。
-- **MVP**: section（result / upgrade_history / reward_ledger）ごとに1枚、計最大3枚。
+- 枚数: **1 run 最大5枚・同一 section 複数可**（2026-07-06 緩和。自動解析ルート §9 の「1〜5枚おおらか受理」に合わせた。
+  当初 MVP は section ごと1枚・計3枚だった）。
+- `section` の決まり方: 手動添付はユーザー指定。自動解析ルートはアップロード時 `other` で保存し、
+  LLM の画像分類結果で埋め戻す（§9）。
 - 制約: `image/png` `image/jpeg` `image/webp`、1枚 ≤ 10MB。サーバ側で MIME/サイズ検証、**保存時に EXIF 除去**。
 - 保存は `BlobStore`（MVP=ローカルボリューム、将来 R2/S3。[02](./02-architecture.md) §7）。
 - **配信は認証必須のエンドポイント経由のみ**。`run_image.owner_id == セッション owner_id` を検証。直リンク・列挙不可。
@@ -97,8 +100,75 @@
 - **API**: 同一スキーマの HTTP エンドポイント。ユーザー単位トークン（better-auth 発行。[05](./05-auth-and-privacy.md)）。
 - いずれも §6 のキットと §4 の検証層を再利用するだけ（契約が1つなので後付けコスト低）。
 
-## 9. Phase3: 全自動（サーバ側 LLM）
+## 9. 全自動（スクショ自動解析）— 設計確定 2026-07-06
 
-- ユーザーがスクショをアップロード → **worker** がサーバ側 LLM で画像→構造化 → §4 の検証層へ。
-- MVP で保存していた `run_image` が、そのまま**処理入力**に昇格する（連続性）。
-- 有料/自分向け（コスト負担があるため。[07](./07-roadmap.md)）。
+ユーザーがスクショをアップロード → **worker**（server とは分離した実行環境で稼働）がサーバ側 LLM で画像→構造化 → §4 の検証層へ。
+MVP で保存していた `run_image` が、そのまま**処理入力**に昇格する（連続性）。
+対象は **`user.role = 'admin'`**（将来は課金ユーザーも。[05](./05-auth-and-privacy.md) §6・[07](./07-roadmap.md)）。
+
+### 9.1 フロー全体
+
+```
+web: スクショ 1〜5 枚ドロップ（admin のみ表示。インポート画面に統合）
+  ↓ POST（枚数 1..5 / MIME / サイズ検証。section は聞かない）
+server: 空の draft run（source=screenshot_auto, コア列 NULL）
+        + run_image ×N（section=other）+ analysis_job（queued）を作成
+  ↓ （worker が outbound polling で claim。worker 側は受け口を持たない）
+worker: 画像ダウンロード → LLM CLI 実行（JSON Schema 強制）→ complete / fail
+  ↓
+server: アダプタ変換 → shared Zod 検証 → run コア列 + entry + payload 更新
+        → run_image.section 埋め戻し → 自動確定ゲート判定（§9.4）
+  ↓
+confirmed（全ゲート通過）or draft（人間が既存レビュー画面で確定）
+```
+
+- ジョブ状態は **`analysis_job`**（run と 1:1。[03](./03-data-model.md) §3.8）に持ち、
+  `run.status` は draft/confirmed のまま拡張しない。「解析中」「要確認」は job 状態から導出する。
+- 再解析は同一 job 行を `queued` に戻す**再キュー方式**（履歴は持たない。来歴は `run_payload.llm_model`）。
+  draft の間のみ許可（confirmed は既存の「下書きに戻す」を経由）。
+
+### 9.2 worker
+
+- 実装は [`packages/worker`](../packages/worker)（`shared` 依存）。**compose には含めず、server とは分離した
+  実行環境で稼働**させる（LLM CLI の実行要件のため。実行環境・常駐化の具体構成は公開リポに書かず、
+  非公開の運用メモ側に記す。[02](./02-architecture.md) §9 と同じ姿勢）。
+- server の worker 専用 API を**定期 polling**（outbound のみ）:
+  - `claim`（queued を1件、排他的に running へ）/ 画像取得 / `complete`（構造化結果）/ `fail`（エラー内容）。
+  - 認証は **`WORKER_API_TOKEN`**（shared secret。env で server / worker 双方に設定）。
+- LLM 呼び出しは **CLI ベースの非対話実行**（画像添付・出力 JSON Schema 強制ができること）。
+  **使用する CLI・モデル・引数は env で注入**し、公開リポにツール固有名やコマンド形を置かない（具体は運用メモ）。
+
+### 9.3 LLM 入出力契約
+
+- 出力は**フラット形 JSON**（JSON Schema は `shared` から導出・worker 用に固定）:
+  - `images[]` … 各画像の section 分類（result / upgrade_history / reward_ledger / other）。
+  - `result` … コア指標（読み取れた項目のみ）。
+  - `entries[]` … `{ week, type: upgrade|reroll, name|flavor }`（§6 のフラット形と同じ。`order_in_week` はアダプタが付与）。
+  - `rewards[]` … `{ name, count, points }`。
+- プロンプトは [analysis-kit](./analysis-kit/) のドメイン注意点（リロールは灰色斜体 / points は掛けない /
+  綴りそのまま 等）を worker 用に再構成し、few-shot 正解例（JSON）を同梱。
+  §6 と同様、**EXAMPLE を server の検証に通す乖離検知テスト**で契約とのズレを検知する。
+- server 側でも共通アダプタ → `shared` Zod 検証を必ず通す（worker の出力を信頼しない。§4 と同一の下流）。
+
+### 9.4 自動確定ゲート
+
+以下**すべて**を満たす場合のみ自動で `confirmed`。1つでも欠ければ draft 止まり（人間がレビュー画面で確定）。
+
+1. error なし（型・必須・負値等）
+2. warning なし（`apocalypse_bonus == Σreward.points` 等の整合チェック）
+3. 全 section 揃い（result / upgrade_history / reward_ledger が各1枚以上に分類された）
+4. **未知名ゼロ**（全 upgrade/reward 名が既存の **verified** カタログに一致）
+
+> 4 は名前の誤読対策: 整合チェックは数値誤読にしか効かず、誤読名は unverified 自動登録で
+> warning なしに confirmed へ入ってしまう。未知名があれば draft に落とし、本物の新アップグレードなら
+> 人手 verify で次回から自動化される（ゲーム更新直後だけ一時的に draft が増える設計）。
+
+### 9.5 失敗処理
+
+- **自動リトライなし**。エラーは即 `failed` + `last_error` 保存（どんなエラーが出るか実態が見えてから自動化を検討）。
+- **部分読み取り**（必須指標が null → 変換後に欠落 → 検証 error）も現状は `failed` として扱う
+  （幻覚値の混入より欠落の明示を優先。draft 保存で受けるのは**緩い draft 契約**＝部分ドラフト
+  保存の導入後。§4 の後続課題）。
+- worker クラッシュ等で `running` のまま残ったジョブも lease（`leased_until`）超過で **failed 落とし**（自動再キューしない）。
+- UI: run 一覧に「解析待ち / 解析中 / 失敗」バッジ（解析中 run があるときのみ数秒間隔で polling）。
+  run 詳細にエラー内容・**再解析ボタン**・手動インポートへの導線（画像は残っているので §6 のキットで自前 LLM に流せる）。

@@ -9,8 +9,9 @@ services:
       - .env.database
     volumes:
       - db-data:/var/lib/mysql
-    ports:
-      - "3306:3306"
+    # ホストへのポート公開はしない（server からは docker network 越しに触れる）。
+    # 他プロジェクトと並行開発する際のホスト 3306 衝突を避けるため。
+    # ホストから直接触りたいときは compose.override.yaml で ports を足す。
     cap_add:
       - SYS_NICE
     healthcheck:
@@ -19,6 +20,14 @@ services:
       timeout: 20s
       retries: 3
       start_period: 5s
+
+  # 開発用の S3 互換ストレージ（BlobStore の s3 アダプタ検証用。本番は Cloudflare R2）。prd/02 §7。
+  # server からは http://seaweedfs:8333 で到達する（ホストへのポート公開はしない）。
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.37
+    command: server -dir=/data -s3 -s3.port=8333
+    volumes:
+      - seaweed-data:/data
 
   server:
     build:
@@ -36,6 +45,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      seaweedfs:
+        condition: service_started
     ports:
       - "4000:4000"
     volumes:
@@ -84,18 +95,10 @@ services:
         - action: rebuild
           path: pnpm-lock.yaml
 
-  # (Phase3) サーバ側 LLM 全自動分析のジョブ処理。MVP では起動しない（profile で隔離）。
-  # worker:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.dev
-  #   profiles: ["phase3"]
-  #   working_dir: /workspace
-  #   command: pnpm --filter worker dev
-  #   depends_on:
-  #     server:
-  #       condition: service_started
+# 注: worker（スクショ自動解析）は compose に含めない。server とは分離した実行環境で
+# `pnpm --filter worker daemon` として動かす（prd/04 §9.2。具体構成は非公開の運用メモ）。
 
 volumes:
   db-data:
-  blob-data:
+  blob-data: # BlobStore local 実装のフォールバック用（開発既定は seaweedfs）
+  seaweed-data:

@@ -3,6 +3,7 @@
 // 方針: .claude/rules/database.md（owner 分離・raw_payload 分離）/ prd/03 §3・§6。
 
 import {
+  analysisJob,
   db,
   rewardCatalog,
   rewardEntry,
@@ -14,6 +15,7 @@ import {
 } from 'database'
 import { and, asc, count, desc, eq } from 'drizzle-orm'
 import type { RunRecord } from 'shared'
+import { blobStore } from './blob-store'
 import type { RunStatus } from './runs'
 
 /** 一覧の 1 行（集計・ソート用のコア指標のみ。raw_payload は含めない）。 */
@@ -49,8 +51,10 @@ function selectRunList(ownerId: string, params: ListRunsParams) {
     : eq(run.ownerId, ownerId)
   return (
     db
-      .select(runListColumns)
+      // 解析ジョブの状態を一覧バッジ用に載せる（スクショ自動解析以外の run は null）。
+      .select({ ...runListColumns, analysisStatus: analysisJob.status })
       .from(run)
+      .leftJoin(analysisJob, eq(analysisJob.runId, run.id))
       .where(where)
       // id を最終 tie-breaker に（played_at/created_at が同値でもページ間で順序を確定させ、
       // offset ページングでの重複/欠落を防ぐ）。
@@ -82,7 +86,7 @@ export async function getRunDetail(ownerId: string, id: string) {
   const core = runRows[0]
   if (!core) return null
 
-  const [upgrades, rewards, payloadRows, images] = await Promise.all([
+  const [upgrades, rewards, payloadRows, images, jobRows] = await Promise.all([
     // upgrade/reroll エントリ（週・週内順で整列。upgrade は catalog 表示名を join）。
     db
       .select({
@@ -125,7 +129,7 @@ export async function getRunDetail(ownerId: string, id: string) {
       .from(runPayload)
       .where(and(eq(runPayload.runId, id), eq(runPayload.ownerId, ownerId)))
       .limit(1),
-    // 画像メタ（実体配信は別エンドポイント。3b で追加）。
+    // 画像メタ（実体配信は GET /api/runs/:id/images/:imageId）。
     db
       .select({
         id: runImage.id,
@@ -136,24 +140,93 @@ export async function getRunDetail(ownerId: string, id: string) {
         height: runImage.height,
       })
       .from(runImage)
-      .where(and(eq(runImage.runId, id), eq(runImage.ownerId, ownerId))),
+      .where(and(eq(runImage.runId, id), eq(runImage.ownerId, ownerId)))
+      .orderBy(asc(runImage.id)),
+    // 解析ジョブ（スクショ自動解析の run のみ存在）。
+    db
+      .select({
+        status: analysisJob.status,
+        attemptCount: analysisJob.attemptCount,
+        lastError: analysisJob.lastError,
+        llmModel: analysisJob.llmModel,
+        updatedAt: analysisJob.updatedAt,
+        leasedUntil: analysisJob.leasedUntil,
+      })
+      .from(analysisJob)
+      .where(and(eq(analysisJob.runId, id), eq(analysisJob.ownerId, ownerId)))
+      .limit(1),
   ])
 
   const payload = payloadRows[0]
+  const job = jobRows[0]
+  // 再解析可否はサーバ側を正典にする（UI のクロックに依存させない）。requeueAnalysis と同条件:
+  // run が draft で、queued でなく、lease 有効な running でもないこと（lease 超過 running は
+  // 停止 worker のジョブとみなして再解析で復旧できる。HSF-1AC17E34 / HSF-BC62F192）。
+  const analysisJobInfo = job
+    ? {
+        status: job.status,
+        attemptCount: job.attemptCount,
+        lastError: job.lastError,
+        llmModel: job.llmModel,
+        updatedAt: job.updatedAt,
+        reanalyzable:
+          core.status === 'draft' &&
+          job.status !== 'queued' &&
+          !(
+            job.status === 'running' &&
+            job.leasedUntil != null &&
+            job.leasedUntil.getTime() > Date.now()
+          ),
+      }
+    : null
   return {
     ...core,
     upgradeEntries: upgrades,
     rewardEntries: rewards,
     images,
+    analysisJob: analysisJobInfo,
     rawPayload: (payload?.rawPayload ?? null) as RunRecord | null,
     llmModel: payload?.llmModel ?? null,
     sourceNote: payload?.sourceNote ?? null,
   }
 }
 
-/** owner の run を削除する（子テーブル・画像メタは複合 FK cascade）。削除できたら true。 */
+/** owner の run の画像 1 枚のメタ（配信用）。無ければ null。 */
+export async function getRunImage(ownerId: string, runId: string, imageId: string) {
+  const rows = await db
+    .select({ storageKey: runImage.storageKey, contentType: runImage.contentType })
+    .from(runImage)
+    .where(and(eq(runImage.id, imageId), eq(runImage.runId, runId), eq(runImage.ownerId, ownerId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * owner の run を削除する（子テーブル・画像メタは複合 FK cascade）。削除できたら true。
+ * 画像実体（BlobStore）は DB 削除の成功後にベストエフォートで消す（prd/04 §7）。
+ */
 export async function deleteRun(ownerId: string, id: string): Promise<boolean> {
+  const keys = (
+    await db
+      .select({ storageKey: runImage.storageKey })
+      .from(runImage)
+      .where(and(eq(runImage.runId, id), eq(runImage.ownerId, ownerId)))
+  ).map((r) => r.storageKey)
+
   // drizzle(mysql2) の delete は [ResultSetHeader, FieldPacket[]] を返す。
   const [header] = await db.delete(run).where(and(eq(run.id, id), eq(run.ownerId, ownerId)))
-  return header.affectedRows > 0
+  if (header.affectedRows === 0) return false
+
+  // 失敗しても run 削除は成立させる（孤児 blob は無害・後から掃除可能。逆に blob を先に消すと
+  // DB 失敗時に「実体の無い画像メタ」が残り配信が壊れる）。
+  const results = await Promise.allSettled(keys.map((key) => blobStore.delete(key)))
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.error(
+        'run 画像の blob 削除に失敗しました（孤児 blob として残ります）:',
+        result.reason,
+      )
+    }
+  }
+  return true
 }

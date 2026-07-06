@@ -26,6 +26,21 @@ export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next()
 }
 
+/**
+ * 管理者限定ルートの前段（スクショ自動解析の機能ゲート。prd/05 §6）。
+ * 未ログインは 401、非 admin は 403。将来の課金ユーザーはここの判定に足す。
+ */
+export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = c.get('user')
+  if (!user) {
+    throw new HTTPException(401, { message: 'authentication required' })
+  }
+  if (user.role !== 'admin') {
+    throw new HTTPException(403, { message: 'admin only' })
+  }
+  await next()
+}
+
 /** ingestion 系 POST の本文サイズ上限（2MB）。1 run の JSON/YAML は数 KB で十分。 */
 export const MAX_INGEST_BODY_BYTES = 2 * 1024 * 1024
 

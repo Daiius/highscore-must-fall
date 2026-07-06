@@ -161,16 +161,16 @@ reward_ledger:          # name / count(発生回数) / points(合計)
   - **pnpm `catalog:` 採用**: 共通依存(React/Hono/Drizzle/Zod 等)を `pnpm-workspace.yaml` の `catalog:` に一元化、各 package.json は `"x":"catalog:"` 参照。版ズレ防止。
   - **`minimumReleaseAge` 採用**: 既定 **3日(4320分)**。公開直後の悪意リリース対策。**最新追従したい依存(Drizzle 1.0 RC 等)は明示 pin で例外化**。
 
-### エージェント指示・ルール・codex 併用
+### エージェント指示・ルール（複数エージェント併用）
 - **Q18**: **A**。
   - **CLAUDE.md**: 最小。`@AGENTS.md` import（or「See AGENTS.md」）のみ。
-  - **AGENTS.md**: 正典のリンクハブ（簡潔）。目的(1行+prdリンク)/スタック・パッケージ構成マップ/開発コマンド(`pnpm dev`=compose watch 等)/**「ルール」セクションで `.claude/rules/*.md` を1つずつリンク**。両エージェント(Claude/Codex)が AGENTS.md 経由でルール発見。
+  - **AGENTS.md**: 正典のリンクハブ（簡潔）。目的(1行+prdリンク)/スタック・パッケージ構成マップ/開発コマンド(`pnpm dev`=compose watch 等)/**「ルール」セクションで `.claude/rules/*.md` を1つずつリンク**。各エージェントが AGENTS.md 経由でルール発見。
   - **`.claude/rules/`**: 内容はツール中立に記述。初期は核数本のみ→実装で育てる。初期候補:
     - `typescript.md`（TS/命名/lint）
     - `schema-and-contract.md`（`shared` の Zod 単一真実・JSON Schema 導出・schema_version 規約）
     - `database.md`（Drizzle・owner_id 必須・インデックス方針・raw_payload 分離）
     - `commit.md`（コミット規約。グローバル設定と非矛盾）
-  - **Codex**: プロジェクト同梱の codex 設定は作らない（`~/.codex/config.toml` は環境依存で公開リポに入れない）。AGENTS.md に一本化。
+  - **エージェント固有設定**: プロジェクト同梱のエージェント固有設定ファイルは作らない（各自のグローバル設定は環境依存で公開リポに入れない）。AGENTS.md に一本化。
   - 公開リポ方針: 本番/開発の具体情報は含めない。
   - **`.claude-personal/`（追加）**: `.gitignore` 対象のローカル専用ディレクトリ。リポに残したくないルール/情報を置く。AGENTS.md から「**存在すれば参照**」形でリンク。
 
@@ -224,6 +224,26 @@ reward_ledger:          # name / count(発生回数) / points(合計)
 - **Q24**: **A**。MVP に**最小限**のカタログ管理を含める（名寄せが崩れると Q14 記述分析が成立しないため前提条件）。
   - 操作3つ: **未検証(unverified)一覧表示 / verify マーク / 既存エントリへエイリアス統合(マージ)**。
   - リッチ属性（カテゴリ・色など）は Phase 2。
+
+## スクショ自動解析（2026-07-06 grill・確定）
+
+Phase3 予定だった全自動投入ルートを前倒し。正典は [04-ingestion.md](../04-ingestion.md) §9。
+
+| # | 論点 | 決定 |
+|---|---|---|
+| 1 | エンティティ | アップロード即、**空 draft run + `analysis_job`**（1:1）。run_image は既存モデルのまま run に紐づけ。run.status は draft/confirmed から拡張しない |
+| 2 | 再解析 | 同一 job 行の**再キュー方式**（履歴なし。来歴は run_payload.llm_model） |
+| 3 | worker 通信 | **server API を outbound polling**（claim/images/complete/fail）。認証は WORKER_API_TOKEN |
+| 4 | ストレージ | BlobStore に **S3 互換アダプタ**追加。本番 R2 / **開発 SeaweedFS**（compose）。local 実装はテスト用に残置。MinIO は不採用 |
+| 5 | LLM 入出力 | LLM CLI の非対話実行で **JSON Schema 強制のフラット形**（images 分類 + result + entries + rewards）。CLI・モデル・引数は env 注入（公開リポに固有名を置かない）。プロンプトは analysis-kit 再構成 + few-shot + 乖離検知テスト |
+| 6 | 着地 | **厳格ゲート**（error なし・warning なし・全 section・全名称 verified）で自動 confirmed。それ以外 draft。ゆくゆく精度 100% 自動を目指す |
+| 7 | 失敗処理 | **自動リトライなし**・即 failed・手動再試行（エラー実態が見えてから自動化検討）。lease 超過も failed 落とし |
+| 8 | 権限 | **user.role**（'user'/'admin'）追加。admin ゲート（将来 premium） |
+| 9 | worker 形態 | **packages/worker は compose 外・server と分離した実行環境で稼働**（LLM CLI の実行要件のため。具体構成は非公開の運用メモ）。compose から worker 削除 |
+| 10 | UI | インポート画面に統合（admin のみ表示）。run 一覧バッジ + 詳細で再解析・手動導線 |
+
+- 却下した代替案: run.status 拡張（ジョブ状態の置き場が結局別に要る）/ 独立 job → 成功時 run 生成（画像付け替えが複雑）/ job 1:N 履歴（個人用途に過剰）/ 既存 bot 基盤への同居（shared 契約に依存できない）/ worker の DB 直結（稼働場所が DB に縛られる）。
+- 付随緩和: run_image は 1 run 最大5枚・同一 section 複数可（section は自動ルートでは LLM 分類で埋め戻し）。
 
 ## 残りの小論点（PRD 執筆時に既定値で確定予定。異論あれば grill）
 - `played_at` の出所: 既定=投入時刻、手動上書き可（スクショに日付なし）。

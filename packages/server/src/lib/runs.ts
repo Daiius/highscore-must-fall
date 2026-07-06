@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import {
+  analysisJob,
   catalogAlias,
   db,
   rewardCatalog,
@@ -43,7 +44,7 @@ export interface SaveRunResult {
 }
 
 /** drizzle トランザクションハンドル（db.transaction のコールバック引数型）。 */
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /**
  * upgrade 名（正規形）を upgrade_catalog の id へ解決する。
@@ -139,7 +140,7 @@ function mustGet(map: Map<string, string>, key: string): string {
 /** InnoDB のデッドロック(1213)・ロック待ちタイムアウト(1205)は限定的に再試行する。 */
 const RETRYABLE_ERRNOS = new Set([1213, 1205])
 
-async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+export async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   let lastErr: unknown
   for (let i = 0; i < attempts; i++) {
     try {
@@ -157,6 +158,79 @@ async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 3): Promise
 }
 
 /**
+ * カタログ解決 + upgrade_entry / reward_entry の書き込み（既存 run への追記部分）。
+ * saveRun（新規 run 保存）とスクショ自動解析の completeJob（既存 run への反映）が共有する。
+ * 呼び出し側が run / run_payload 行と、（再反映時は）既存エントリの削除を用意すること。
+ */
+export async function writeRunChildren(
+  tx: Tx,
+  args: { record: RunRecord; runId: string; ownerId: string },
+): Promise<void> {
+  const { record, runId, ownerId } = args
+  // 未知カタログの upsert を run 間で決定的な順序（canonical_key 昇順・upgrade→reward）で行うために、
+  // 事前に名前を dedupe & ソートしておく。ロック取得順を全 run で揃え、逆順ロックによるデッドロックを防ぐ。
+  const upgradeKeys = [
+    ...new Set(record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : []))),
+  ].sort()
+  const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))].sort()
+
+  // カタログを決定的順序で解決して id マップを作る（ここでロックが確定する）。
+  const upgradeIdByKey = new Map<string, string>()
+  for (const key of upgradeKeys) {
+    upgradeIdByKey.set(key, await resolveUpgradeCatalogId(tx, key, runId))
+  }
+  const rewardIdByKey = new Map<string, string>()
+  for (const key of rewardKeys) {
+    rewardIdByKey.set(key, await resolveRewardCatalogId(tx, key, runId))
+  }
+
+  // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番。catalog id はマップ引き）。
+  let upgradeOrder = 0
+  for (const entry of record.upgrade_history) {
+    if (entry.entry_type === 'upgrade') {
+      upgradeOrder += 1
+      await tx.insert(upgradeEntry).values({
+        id: randomUUID(),
+        ownerId,
+        runId,
+        weekIndex: entry.week_index,
+        orderInWeek: entry.order_in_week,
+        entryType: 'upgrade',
+        upgradeCatalogId: mustGet(upgradeIdByKey, entry.name),
+        upgradeOrder,
+      })
+    } else {
+      await tx.insert(upgradeEntry).values({
+        id: randomUUID(),
+        ownerId,
+        runId,
+        weekIndex: entry.week_index,
+        orderInWeek: entry.order_in_week,
+        entryType: 'reroll',
+        flavorText: entry.flavor_text,
+      })
+    }
+  }
+
+  // reward_entry。
+  for (const r of record.reward_ledger) {
+    await tx.insert(rewardEntry).values({
+      id: randomUUID(),
+      ownerId,
+      runId,
+      rewardCatalogId: mustGet(rewardIdByKey, r.name),
+      count: r.count,
+      points: r.points,
+    })
+  }
+}
+
+/** upgrade_history から reroll 数を数える（run.reroll_count の非正規化用）。 */
+export function countRerolls(record: RunRecord): number {
+  return record.upgrade_history.filter((e) => e.entry_type === 'reroll').length
+}
+
+/**
  * 検証済み RunRecord を保存する。呼び出し側は事前に shared で検証し、
  * confirmed なら error 無しを保証していること（ここでは DB 書き込みに専念する）。
  */
@@ -164,14 +238,6 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
   const { record, ownerId, status, source } = input
   const runId = randomUUID()
   const playedAt = input.playedAt ?? (record.played_at ? new Date(record.played_at) : new Date())
-  const rerollCount = record.upgrade_history.filter((e) => e.entry_type === 'reroll').length
-
-  // 未知カタログの upsert を run 間で決定的な順序（canonical_key 昇順・upgrade→reward）で行うために、
-  // 事前に名前を dedupe & ソートしておく。ロック取得順を全 run で揃え、逆順ロックによるデッドロックを防ぐ。
-  const upgradeKeys = [
-    ...new Set(record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : []))),
-  ].sort()
-  const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))].sort()
 
   await withDeadlockRetry(() =>
     db.transaction(async (tx) => {
@@ -189,7 +255,7 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
         aliensDefeated: record.result.aliens_defeated,
         nukesLaunched: record.result.nukes_launched,
         apocalypseBonus: record.result.apocalypse_bonus,
-        rerollCount,
+        rerollCount: countRerolls(record),
       })
 
       // run_payload（正規スキーマ全体を丸ごと温存）。
@@ -201,55 +267,7 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
         sourceNote: input.sourceNote,
       })
 
-      // カタログを決定的順序で解決して id マップを作る（ここでロックが確定する）。
-      const upgradeIdByKey = new Map<string, string>()
-      for (const key of upgradeKeys) {
-        upgradeIdByKey.set(key, await resolveUpgradeCatalogId(tx, key, runId))
-      }
-      const rewardIdByKey = new Map<string, string>()
-      for (const key of rewardKeys) {
-        rewardIdByKey.set(key, await resolveRewardCatalogId(tx, key, runId))
-      }
-
-      // upgrade_entry（配列順を保ちつつ upgrade 通し番号を採番。catalog id はマップ引き）。
-      let upgradeOrder = 0
-      for (const entry of record.upgrade_history) {
-        if (entry.entry_type === 'upgrade') {
-          upgradeOrder += 1
-          await tx.insert(upgradeEntry).values({
-            id: randomUUID(),
-            ownerId,
-            runId,
-            weekIndex: entry.week_index,
-            orderInWeek: entry.order_in_week,
-            entryType: 'upgrade',
-            upgradeCatalogId: mustGet(upgradeIdByKey, entry.name),
-            upgradeOrder,
-          })
-        } else {
-          await tx.insert(upgradeEntry).values({
-            id: randomUUID(),
-            ownerId,
-            runId,
-            weekIndex: entry.week_index,
-            orderInWeek: entry.order_in_week,
-            entryType: 'reroll',
-            flavorText: entry.flavor_text,
-          })
-        }
-      }
-
-      // reward_entry。
-      for (const r of record.reward_ledger) {
-        await tx.insert(rewardEntry).values({
-          id: randomUUID(),
-          ownerId,
-          runId,
-          rewardCatalogId: mustGet(rewardIdByKey, r.name),
-          count: r.count,
-          points: r.points,
-        })
-      }
+      await writeRunChildren(tx, { record, runId, ownerId })
     }),
   )
 
@@ -259,6 +277,7 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
 export type UpdateRunStatusResult =
   | { kind: 'not_found' }
   | { kind: 'invalid'; issues: ValidationIssue[] }
+  | { kind: 'analysis_in_progress' }
   | { kind: 'updated'; status: RunStatus; issues: ValidationIssue[] }
 
 /**
@@ -266,6 +285,8 @@ export type UpdateRunStatusResult =
  *   - draft → confirmed: 保存済み raw_payload を現行契約で再検証し、error があれば遷移しない。
  *     現状の draft は error なしでしか保存できないためほぼ素通りだが、部分ドラフト
  *     （緩い draft 契約）導入後もこの再検証が確定条件を保つ。
+ *     解析中（analysis_job が queued/running）の run は、中身が未確定なので確定を拒否する
+ *     （worker の complete と競合させない。frontend でもボタンを止めるが backend で確実に弾く）。
  *   - confirmed → draft（再ドラフト）: 修正作業用。検証なしで戻す。
  * 同じ status への遷移は冪等に成功。
  */
@@ -274,31 +295,50 @@ export async function updateRunStatus(
   runId: string,
   status: RunStatus,
 ): Promise<UpdateRunStatusResult> {
-  const rows = await db
-    .select({ status: run.status })
-    .from(run)
-    .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
-    .limit(1)
-  const current = rows[0]
-  if (!current) return { kind: 'not_found' }
-  if (current.status === status) return { kind: 'updated', status, issues: [] }
+  return withDeadlockRetry(() =>
+    db.transaction(async (tx): Promise<UpdateRunStatusResult> => {
+      // run → job の順で行ロックする（completeJob / requeueAnalysis と同順でデッドロック回避）。
+      // 判定〜更新の間に worker の claim / complete が割り込むのを防ぐ。
+      const rows = await tx
+        .select({ status: run.status })
+        .from(run)
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+        .limit(1)
+        .for('update')
+      const current = rows[0]
+      if (!current) return { kind: 'not_found' }
+      if (current.status === status) return { kind: 'updated', status, issues: [] }
 
-  let issues: ValidationIssue[] = []
-  if (status === 'confirmed') {
-    const payloadRows = await db
-      .select({ rawPayload: runPayload.rawPayload })
-      .from(runPayload)
-      .where(and(eq(runPayload.runId, runId), eq(runPayload.ownerId, ownerId)))
-      .limit(1)
-    // payload 欠落（想定外）も Zod エラーとして invalid に落ちる。
-    const result = validateRunRecord(payloadRows[0]?.rawPayload)
-    if (!result.ok) return { kind: 'invalid', issues: result.issues }
-    issues = result.issues
-  }
+      let issues: ValidationIssue[] = []
+      if (status === 'confirmed') {
+        // 解析中は確定不可（自動解析 run のみ analysis_job を持つ。手動 run は素通り）。
+        const jobRows = await tx
+          .select({ status: analysisJob.status })
+          .from(analysisJob)
+          .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
+          .limit(1)
+          .for('update')
+        const jobStatus = jobRows[0]?.status
+        if (jobStatus === 'queued' || jobStatus === 'running') {
+          return { kind: 'analysis_in_progress' }
+        }
 
-  await db
-    .update(run)
-    .set({ status })
-    .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
-  return { kind: 'updated', status, issues }
+        const payloadRows = await tx
+          .select({ rawPayload: runPayload.rawPayload })
+          .from(runPayload)
+          .where(and(eq(runPayload.runId, runId), eq(runPayload.ownerId, ownerId)))
+          .limit(1)
+        // payload 欠落（想定外）も Zod エラーとして invalid に落ちる。
+        const result = validateRunRecord(payloadRows[0]?.rawPayload)
+        if (!result.ok) return { kind: 'invalid', issues: result.issues }
+        issues = result.issues
+      }
+
+      await tx
+        .update(run)
+        .set({ status })
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+      return { kind: 'updated', status, issues }
+    }),
+  )
 }

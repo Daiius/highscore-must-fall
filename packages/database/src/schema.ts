@@ -41,6 +41,10 @@ export const RUN_SOURCES = ['file_import', 'paste', 'mcp', 'api', 'screenshot_au
 export const CATALOG_KINDS = ['upgrade', 'reward'] as const
 /** スクショがどの画面か（prd/03 §3.7）。 */
 export const IMAGE_SECTIONS = ['result', 'upgrade_history', 'reward_ledger', 'other'] as const
+/** ユーザーのロール（自動解析の機能ゲート。prd/05 §6。将来 'premium' 等を追加）。 */
+export const USER_ROLES = ['user', 'admin'] as const
+/** スクショ自動解析ジョブの状態（run.status とは独立。prd/03 §3.8）。 */
+export const ANALYSIS_JOB_STATUSES = ['queued', 'running', 'succeeded', 'failed'] as const
 
 /** PK 用の cuid/uuid 既定生成。アプリ層 insert で採番する。 */
 const id = () => varchar('id', { length: 36 }).primaryKey().$defaultFn(randomUUID)
@@ -64,6 +68,9 @@ export const user = mysqlTable('user', {
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
+  // 機能ゲート用ロール（prd/05 §6）。better-auth の additionalFields でセッションに載せる。
+  // admin 付与は DB 直接更新（管理 UI は作らない）。
+  role: mysqlEnum('role', USER_ROLES).notNull().default('user'),
   image: text('image'),
   createdAt: timestamp('created_at', { fsp: 3 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { fsp: 3 })
@@ -363,6 +370,42 @@ export const runImage = mysqlTable(
       columns: [t.runId, t.ownerId],
       foreignColumns: [run.id, run.ownerId],
       name: 'run_image_run_owner_fkey',
+    }).onDelete('cascade'),
+  ],
+)
+
+// --- analysis_job（スクショ自動解析のジョブ状態。run と 1:1）。prd/03 §3.8・prd/04 §9。 ---
+// run.status（draft/confirmed）とは独立した「現在の運用状態」。履歴は持たない
+// （再解析は同一行を queued に戻す。来歴は run_payload.llm_model に残る）。
+// 「解析中」「解析済み・要確認」は status × run.status から導出する。
+
+export const analysisJob = mysqlTable(
+  'analysis_job',
+  {
+    // 1:1 なので run_id を PK にする（run_payload と同じ形）。
+    runId: varchar('run_id', { length: 36 }).primaryKey(),
+    ownerId: childOwnerId(),
+    status: mysqlEnum('status', ANALYSIS_JOB_STATUSES).notNull().default('queued'),
+    // 再解析（人間起点の再キュー）を含む累計試行回数。claim 時にインクリメント。
+    attemptCount: int('attempt_count').notNull().default(0),
+    // failed の原因（UI 表示用）。
+    lastError: text('last_error'),
+    // claim 時に設定する処理期限。超過は failed 落とし（自動再キューしない。prd/04 §9.5）。
+    leasedUntil: datetime('leased_until'),
+    // 直近の実行モデル（worker が complete 時に報告）。
+    llmModel: varchar('llm_model', { length: 128 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    // worker の claim（queued を古い順に1件）用。
+    index('analysis_job_status_created_idx').on(t.status, t.createdAt),
+    index('analysis_job_owner_status_idx').on(t.ownerId, t.status),
+    // (run_id, owner_id) → run(id, owner_id)。owner 一致を強制しつつ run 削除で cascade。
+    foreignKey({
+      columns: [t.runId, t.ownerId],
+      foreignColumns: [run.id, run.ownerId],
+      name: 'analysis_job_run_owner_fkey',
     }).onDelete('cascade'),
   ],
 )

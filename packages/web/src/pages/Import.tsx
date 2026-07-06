@@ -5,7 +5,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL, client } from '../api'
 import oneshotPrompt from '../assets/oneshot-prompt.txt?raw'
-import { useAuth } from '../lib/auth'
+import { ScreenshotUpload } from '../components/ScreenshotUpload'
+import { canUseAutoAnalysis, useAuth } from '../lib/auth'
 
 interface Issue {
   level: 'error' | 'warning'
@@ -36,7 +37,7 @@ reward_ledger:
 
 export function Import() {
   const navigate = useNavigate()
-  const { clearSession } = useAuth()
+  const { user, clearSession } = useAuth()
   const [text, setText] = useState('')
   const [format, setFormat] = useState<Format>('auto')
   const [result, setResult] = useState<ValidateResult | null>(null)
@@ -134,6 +135,8 @@ export function Import() {
           JSON Schema を開く
         </a>
       </div>
+
+      {canUseAutoAnalysis(user) && <ScreenshotUpload />}
 
       <p className="text-slate-400 text-sm">
         リザルト画面のスクショを自前の LLM で解析した JSON/YAML を貼り付けてください。

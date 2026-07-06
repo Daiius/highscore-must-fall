@@ -13,9 +13,11 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { StoredDatetimeSchema } from 'shared'
 import { z } from 'zod'
-import { type AppEnv, limitIngestBody, requireUser } from '../lib/context'
+import { requeueAnalysis } from '../lib/analysis-jobs'
+import { blobStore } from '../lib/blob-store'
+import { type AppEnv, limitIngestBody, requireAdmin, requireUser } from '../lib/context'
 import { ingestSubmission } from '../lib/ingest'
-import { deleteRun, getRunDetail, listRuns } from '../lib/run-queries'
+import { deleteRun, getRunDetail, getRunImage, listRuns } from '../lib/run-queries'
 import { saveRun, updateRunStatus } from '../lib/runs'
 
 /** run_payload.source_note は MySQL TEXT（最大 65535 バイト）。UTF-8 バイト長で制限する。 */
@@ -101,15 +103,48 @@ export const runsRoute = new Hono<AppEnv>()
       const body = c.req.valid('json')
       const result = await updateRunStatus(owner.id, c.req.param('id'), body.status)
       if (result.kind === 'not_found') return c.json({ error: 'not found' }, 404)
+      if (result.kind === 'analysis_in_progress') {
+        return c.json({ ok: false, error: 'analysis in progress' }, 409)
+      }
       if (result.kind === 'invalid') return c.json({ ok: false, issues: result.issues }, 422)
       return c.json({ ok: true, status: result.status, issues: result.issues })
     },
   )
-  // 削除（owner の run のみ・子テーブルは複合 FK cascade）。
+  // 削除（owner の run のみ・子テーブルは複合 FK cascade。画像実体も削除）。
   .delete('/:id', requireUser, async (c) => {
     const owner = c.get('user')
     if (!owner) return c.json({ error: 'authentication required' }, 401)
     const deleted = await deleteRun(owner.id, c.req.param('id'))
     if (!deleted) return c.json({ error: 'not found' }, 404)
     return c.body(null, 204)
+  })
+  // スクショ実体の配信（owner の run のみ・認証エンドポイント経由。直リンク不可。prd/04 §7）。
+  .get('/:id/images/:imageId', requireUser, async (c) => {
+    const owner = c.get('user')
+    if (!owner) return c.json({ error: 'authentication required' }, 401)
+    const image = await getRunImage(owner.id, c.req.param('id'), c.req.param('imageId'))
+    if (!image) return c.json({ error: 'not found' }, 404)
+    const stream = await blobStore.getStream(image.storageKey)
+    return c.body(stream, 200, {
+      'Content-Type': image.contentType,
+      // 認証付き・本人のみのため private。実体は不変（再アップロードは別 id）なので長めに持てる。
+      'Cache-Control': 'private, max-age=86400',
+    })
+  })
+  // 再解析（スクショ自動解析の再キュー。admin 限定・draft のみ。prd/04 §9.1）。
+  .post('/:id/reanalyze', requireAdmin, async (c) => {
+    const owner = c.get('user')
+    if (!owner) return c.json({ error: 'authentication required' }, 401)
+    const result = await requeueAnalysis(owner.id, c.req.param('id'))
+    if (result === 'not_found') return c.json({ ok: false, error: 'not found' }, 404)
+    if (result === 'run_not_draft') {
+      return c.json(
+        { ok: false, error: '確定済みの run は下書きに戻してから再解析してください' },
+        409,
+      )
+    }
+    if (result === 'already_running') {
+      return c.json({ ok: false, error: '解析が実行中です' }, 409)
+    }
+    return c.json({ ok: true })
   })

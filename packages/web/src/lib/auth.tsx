@@ -10,6 +10,13 @@ export interface AuthUser {
   name: string
   email: string
   image?: string | null
+  /** 機能ゲート用ロール（prd/05 §6）。スクショ自動解析は 'admin' のみ。 */
+  role?: string
+}
+
+/** スクショ自動解析を使えるユーザーか（将来 premium もここに足す）。 */
+export function canUseAutoAnalysis(user: AuthUser | null): boolean {
+  return user?.role === 'admin'
 }
 
 interface AuthState {

@@ -13,12 +13,14 @@
   すべての投入ルート（ファイル/インポート・将来の MCP/API・サーバ側 LLM）と各パッケージがこれを参照する。
 
 ```
-[ ユーザー自前 LLM / ファイル / (将来)MCP・API / (将来)サーバ側 LLM ]
+[ ユーザー自前 LLM / ファイル / (将来)MCP・API / スクショ自動解析 ]
                      │  すべて同じ正規スキーマ(shared)に収束
                      ▼
    web (UI) ──HTTP/RPC──> server (Hono) ──> database (Drizzle/MySQL)
-                                    │
-                                    └─> BlobStore（画像: ローカル→将来 R2/S3）
+                              │  ▲              └─> BlobStore（S3 互換: 本番 R2 / 開発 SeaweedFS）
+                              │  │ outbound polling（claim/complete）
+                              ▼  │
+                     worker（compose 外・分離実行環境）── LLM CLI（画像→構造化）
 ```
 
 ## 2. 技術スタック
@@ -46,7 +48,7 @@ packages/
   database/   # Drizzle スキーマ・マイグレーション・DB クライアント・seed
   server/     # Hono(RPC) API・better-auth・ingestion アダプタ層・(将来)MCP
   web/        # Vite + React + TanStack Router + Tailwind の UI
-  worker/     # (Phase3) サーバ側 LLM 全自動分析のジョブ処理。MVP は非実装スキャフォルド
+  worker/     # スクショ自動解析のジョブ処理（compose 外・分離実行環境で稼働。prd/04 §9）
 ```
 
 ### 依存方向（循環させない）
@@ -79,12 +81,15 @@ shared  ← database ← server ← (worker)
 
 ## 5. 開発環境（docker compose watch）
 
-- ルートの `compose.yaml` で `db` / `server` / `web` を起動。`worker` は `profile: phase3` で隔離（MVP では起動しない）。
+- ルートの `compose.yaml` で `db` / `server` / `web` / `seaweedfs` を起動。
+  **`worker` は compose に含めない**（server とは分離した実行環境で運用する。具体構成は §9 の姿勢に従い
+  非公開の運用メモ側に記す。[04](./04-ingestion.md) §9.2）。
 - **bind mount を使わず** `docker compose watch` の同期を用いる（参考: 同一スタックの実働リポ）。
   - `server`: `sync+restart`（`packages/server`・`shared`・`database` を同期）。
   - `web`: `sync`（HMR）。
   - `pnpm-lock.yaml` 変更時のみ `rebuild`。
-- 画像のローカル保存先（`BlobStore` local）は named volume（`blob-data`）にマウント。
+- 画像の開発保存先は **SeaweedFS**（S3 互換ゲートウェイ。named volume。→ §7）。
+  local 実装の named volume（`blob-data`）はテスト/フォールバック用に残す。
 - 主要コマンド（ルート `package.json`）:
 
 | コマンド | 内容 |
@@ -117,10 +122,12 @@ interface BlobStore {
 }
 ```
 
-- **MVP**: ローカルファイルボリューム実装（compose の named volume）。S3 互換サービスは立てない。
-- **移行時**: 同インターフェースを `@aws-sdk/client-s3`（Cloudflare R2 は S3 互換）で実装し差し替え。呼び出し側は無変更。
+- 実装は2つ（env `BLOB_STORE` で切り替え。2026-07-06 決定）:
+  - **`s3`**: `@aws-sdk/client-s3` による S3 互換アダプタ。**本番 = Cloudflare R2 / 開発 = SeaweedFS**
+    （compose に S3 ゲートウェイを追加。endpoint/credentials は env 注入で、R2 との差分は設定のみ）。
+  - **`local`**: ローカルファイルボリューム実装。ユニットテストと SeaweedFS を立てない場面のフォールバック。
 - **配信は必ずアプリのエンドポイント経由**（直リンク禁止）。`owner_id` 検証を1か所に集約。
-  MVP はディスクからストリーム、将来は署名 URL へリダイレクト。詳細は [04](./04-ingestion.md) §画像。
+  当面はサーバ経由ストリーム、将来は署名 URL へリダイレクト。詳細は [04](./04-ingestion.md) §画像。
 
 ## 8. ツールチェーン詳細
 
@@ -135,8 +142,8 @@ interface BlobStore {
 
 ## 9. デプロイ姿勢
 
-- **self-host で開始**（MySQL・server・web・ローカル `BlobStore`）。アクセス増に応じて Cloudflare / Vercel 等を検討し、
-  画像は R2/S3 アダプタへ移行。
+- **self-host で開始**（MySQL・server・web）。画像は **Cloudflare R2**（S3 アダプタ。§7）。
+  アクセス増に応じて Cloudflare / Vercel 等への移行を検討。
 - 公開配置の前提: HTTPS / シークレット管理 / CORS /（将来）レート制限（[05](./05-auth-and-privacy.md)）。
 - **本番・開発環境の具体情報（ドメイン/TLS/リバプロ/接続先/シークレット）は公開リポジトリに含めない**。
   ローカル限定の運用メモは gitignore 対象の `.claude-personal/` に置き、エージェントからは「存在すれば参照」する。

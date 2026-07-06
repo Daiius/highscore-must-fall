@@ -15,12 +15,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
     "@hono/node-server": "catalog:",
     "@hono/zod-validator": "catalog:",
     "better-auth": "catalog:",
     "database": "workspace:*",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",
+    "sharp": "catalog:",
     "shared": "workspace:*",
     "yaml": "catalog:",
     "zod": "catalog:"

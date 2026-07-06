@@ -52,7 +52,8 @@ RewardEntry { name: string, count: int, points: int }
 | `upgrade_catalog` / `reward_catalog` | 名寄せマスタ（**グローバル**。§5 の注意） | ✕ |
 | `catalog_alias` | 別名→正規エントリの対応（マージ用） | ✕ |
 | `run_image` | スクショ証跡（BlobStore キー参照） | ○ |
-| （認証テーブル） | better-auth が管理（user/session/account 等） | — |
+| `analysis_job` | スクショ自動解析のジョブ状態（run と 1:1。[04](./04-ingestion.md) §9） | ○ |
+| （認証テーブル） | better-auth が管理（user/session/account 等）。`user` に `role` を追加（[05](./05-auth-and-privacy.md) §6） | — |
 
 > **原則**: 全トップレベルの**ユーザーデータ**テーブルに `owner_id`（= 認証済みユーザー ID）を持たせ、
 > 複合インデックスの**先頭**に置く。アプリ層は必ず `owner_id` を条件に含める（他ユーザーのデータに触れない）。
@@ -68,7 +69,7 @@ RewardEntry { name: string, count: int, points: int }
 | `owner_id` | string(FK user) | 索引先頭 |
 | `game` | string | 既定 "UTOPIA MUST FALL" |
 | `played_at` | datetime | 既定=投入時刻、手動上書き可（スクショに日付なし） |
-| `status` | enum(`draft`,`confirmed`) | 部分ドラフト許容（[04](./04-ingestion.md)） |
+| `status` | enum(`draft`,`confirmed`) | 部分ドラフト許容（[04](./04-ingestion.md)）。自動解析の「解析中/失敗」は `analysis_job` 側に持ち、ここは拡張しない（§3.8） |
 | `source` | enum(`file_import`,`paste`,`mcp`,`api`,`screenshot_auto`) | 来歴 |
 | `schema_version` | string | |
 | `days_survived` | int | |
@@ -165,8 +166,28 @@ RewardEntry { name: string, count: int, points: int }
 | `width` / `height` | int? | 任意 |
 | `created_at` | datetime | |
 
-- MVP のバリデーション: **section あたり1枚（1 run 最大3枚）**、1枚 ≤ 10MB、保存時に EXIF 除去。
-  スキーマ自体は将来の複数枚に耐える。配信は認証エンドポイント経由のみ（[02](./02-architecture.md) §7・[04](./04-ingestion.md)）。
+- バリデーション: **1 run 最大5枚・同一 section 複数可**（2026-07-06 緩和。[04](./04-ingestion.md) §7）、
+  1枚 ≤ 10MB、保存時に EXIF 除去。配信は認証エンドポイント経由のみ（[02](./02-architecture.md) §7・[04](./04-ingestion.md)）。
+- 自動解析ルートではアップロード時 `section=other` で保存し、LLM の画像分類で埋め戻す（[04](./04-ingestion.md) §9）。
+
+### 3.8 `analysis_job`（スクショ自動解析のジョブ状態）
+
+| カラム | 型 | 備考 |
+|---|---|---|
+| `run_id` | string(PK/FK run) | **1:1**（`run_payload` と同じ形）。run 削除でカスケード |
+| `owner_id` | string | |
+| `status` | enum(`queued`,`running`,`succeeded`,`failed`) | run.status とは独立（draft/confirmed は拡張しない） |
+| `attempt_count` | int | 再解析（人間起点の再キュー）で増える |
+| `last_error` | text? | failed の原因（UI 表示用） |
+| `leased_until` | datetime? | claim 時に設定。超過は failed 落とし（自動再キューしない） |
+| `llm_model` | string? | 直近の実行モデル |
+| `created_at` / `updated_at` | datetime | |
+
+インデックス: `(status, created_at)`（worker の claim 用）/ `(owner_id, status)`。
+
+> 「解析中」「解析済み・要確認」は `analysis_job.status × run.status` から導出する
+> （例: succeeded × draft = 要確認）。ジョブは**現在の運用状態**であり履歴ではない
+> （再解析は同一行を `queued` に戻す。来歴は `run_payload.llm_model` に残る）。詳細は [04](./04-ingestion.md) §9。
 
 ## 4. 整合チェック（再掲・実装位置）
 

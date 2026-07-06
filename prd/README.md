@@ -12,13 +12,16 @@ Utopia Must Fall のプレイ結果（スコア / アップグレード取得履
 
 - **MVP**: OAuth ログイン → ユーザー自前 LLM で外部解析した JSON/YAML を投入（スクショは証跡として保存）→
   レビュー&整合チェック → 確定 → run 閲覧・最小カタログ管理・記述的分析。
+- **スクショ自動解析（Phase3 から前倒し・進行中）**: 画像アップロード → worker（サーバ側 LLM）が
+  構造化 → 厳格ゲート通過で自動確定。admin（将来は課金ユーザー）限定（[04](./04-ingestion.md) §9）。
 - **Phase2**: MCP/API 投入、相関分析。
-- **Phase3**: サーバ側 LLM 全自動分析、課金、横断統計/ランキング（オプトイン）。
+- **Phase3**: 課金、横断統計/ランキング（オプトイン）。
 - 詳細フェーズ: [07-roadmap.md](./07-roadmap.md)。
 
 ## アーキ概観
 
-- フルスタック TypeScript の pnpm monorepo: `shared` / `database` / `server` / `web`（+`worker` は Phase3）。
+- フルスタック TypeScript の pnpm monorepo: `shared` / `database` / `server` / `web` / `worker`
+  （worker はスクショ自動解析。compose 外・分離実行環境）。
 - MySQL 8.4 / Hono(RPC) / Drizzle 1.0 RC / better-auth(Google) / Vite+React19+TanStack Router+Tailwind。
 - docker compose watch / Biome / Vitest。
 - 設計の柱: **`shared` を中心契約（Zod 単一真実）**にして全投入ルートを収束させる。
