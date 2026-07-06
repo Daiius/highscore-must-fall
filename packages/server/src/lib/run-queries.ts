@@ -150,6 +150,7 @@ export async function getRunDetail(ownerId: string, id: string) {
         lastError: analysisJob.lastError,
         llmModel: analysisJob.llmModel,
         updatedAt: analysisJob.updatedAt,
+        leasedUntil: analysisJob.leasedUntil,
       })
       .from(analysisJob)
       .where(and(eq(analysisJob.runId, id), eq(analysisJob.ownerId, ownerId)))
@@ -157,12 +158,33 @@ export async function getRunDetail(ownerId: string, id: string) {
   ])
 
   const payload = payloadRows[0]
+  const job = jobRows[0]
+  // 再解析可否はサーバ側を正典にする（UI のクロックに依存させない）。requeueAnalysis と同条件:
+  // run が draft で、queued でなく、lease 有効な running でもないこと（lease 超過 running は
+  // 停止 worker のジョブとみなして再解析で復旧できる。HSF-1AC17E34 / HSF-BC62F192）。
+  const analysisJobInfo = job
+    ? {
+        status: job.status,
+        attemptCount: job.attemptCount,
+        lastError: job.lastError,
+        llmModel: job.llmModel,
+        updatedAt: job.updatedAt,
+        reanalyzable:
+          core.status === 'draft' &&
+          job.status !== 'queued' &&
+          !(
+            job.status === 'running' &&
+            job.leasedUntil != null &&
+            job.leasedUntil.getTime() > Date.now()
+          ),
+      }
+    : null
   return {
     ...core,
     upgradeEntries: upgrades,
     rewardEntries: rewards,
     images,
-    analysisJob: jobRows[0] ?? null,
+    analysisJob: analysisJobInfo,
     rawPayload: (payload?.rawPayload ?? null) as RunRecord | null,
     llmModel: payload?.llmModel ?? null,
     sourceNote: payload?.sourceNote ?? null,

@@ -47,6 +47,8 @@ interface AnalysisJobInfo {
   lastError: string | null
   llmModel: string | null
   updatedAt: string
+  /** 再解析可否（サーバ判定・正典）。lease 超過の running もここで true になる。 */
+  reanalyzable: boolean
 }
 interface RunDetailData {
   id: string
@@ -273,11 +275,7 @@ export function RunDetail() {
       {run.analysisJob && (
         <AnalysisJobPanel
           job={run.analysisJob}
-          canReanalyze={
-            canUseAutoAnalysis(user) &&
-            run.status === 'draft' &&
-            !isAnalysisActive(run.analysisJob.status)
-          }
+          canReanalyze={canUseAutoAnalysis(user) && run.analysisJob.reanalyzable}
           busy={busy}
           onReanalyze={() => void reanalyze()}
         />
@@ -429,7 +427,8 @@ function AnalysisJobPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-slate-300 text-sm">
           自動解析: {job.status === 'queued' && '解析待ち（worker の polling を待っています）'}
-          {job.status === 'running' && '解析中…'}
+          {job.status === 'running' &&
+            (job.reanalyzable ? '解析中…（応答なし。再解析で復旧できます）' : '解析中…')}
           {job.status === 'succeeded' && '解析済み'}
           {job.status === 'failed' && '失敗しました'}
           <span className="ml-2 text-slate-500 text-xs">
