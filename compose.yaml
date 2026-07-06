@@ -9,8 +9,9 @@ services:
       - .env.database
     volumes:
       - db-data:/var/lib/mysql
-    ports:
-      - "3306:3306"
+    # ホストへのポート公開はしない（server からは docker network 越しに触れる）。
+    # 他プロジェクトと並行開発する際のホスト 3306 衝突を避けるため。
+    # ホストから直接触りたいときは compose.override.yaml で ports を足す。
     cap_add:
       - SYS_NICE
     healthcheck:
