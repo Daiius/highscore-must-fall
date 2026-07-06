@@ -18,28 +18,65 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
   'image/webp': 'webp',
 }
 
+/** stdout / stderr それぞれのメモリ上限。超過したら kill して failed に落とす（OOM 回避）。 */
+const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
+
 interface CommandResult {
   code: number | null
   stdout: string
   stderr: string
   timedOut: boolean
+  outputOverflow: boolean
 }
 
-/** テンプレート展開済みコマンドをシェル経由で実行し、プロンプトを stdin で渡す。 */
+/**
+ * テンプレート展開済みコマンドをシェル経由で実行し、プロンプトを stdin で渡す。
+ * detached で独立プロセスグループにし、タイムアウト/出力過多では **グループ全体**を kill する
+ * （シェルだけ殺すと LLM CLI やパイプラインの子プロセスが残るため）。
+ * stdout/stderr はバイト上限で打ち切り、無制限のメモリ連結による OOM を防ぐ。
+ */
 function runCommand(command: string, stdin: string, timeoutMs: number): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn('/bin/sh', ['-c', command], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn('/bin/sh', ['-c', command], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
+    })
     let stdout = ''
     let stderr = ''
+    let stdoutBytes = 0
+    let stderrBytes = 0
     let timedOut = false
+    let outputOverflow = false
+
+    // detached なので child.pid はグループリーダ。-pid でグループ全体へシグナルを送る。
+    const killGroup = () => {
+      try {
+        if (child.pid) process.kill(-child.pid, 'SIGKILL')
+      } catch {
+        child.kill('SIGKILL')
+      }
+    }
     const timer = setTimeout(() => {
       timedOut = true
-      child.kill('SIGKILL')
+      killGroup()
     }, timeoutMs)
+
     child.stdout.on('data', (chunk: Buffer) => {
+      stdoutBytes += chunk.length
+      if (stdoutBytes > MAX_OUTPUT_BYTES) {
+        outputOverflow = true
+        killGroup()
+        return
+      }
       stdout += chunk.toString()
     })
     child.stderr.on('data', (chunk: Buffer) => {
+      stderrBytes += chunk.length
+      if (stderrBytes > MAX_OUTPUT_BYTES) {
+        outputOverflow = true
+        killGroup()
+        return
+      }
       stderr += chunk.toString()
     })
     child.on('error', (e) => {
@@ -48,8 +85,10 @@ function runCommand(command: string, stdin: string, timeoutMs: number): Promise<
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      resolve({ code, stdout, stderr, timedOut })
+      resolve({ code, stdout, stderr, timedOut, outputOverflow })
     })
+    // 子が即死して stdin が閉じると EPIPE。握りつぶす（close で結果を返す）。
+    child.stdin.on('error', () => {})
     child.stdin.end(stdin)
   })
 }
@@ -96,6 +135,14 @@ export async function processJob(
       const prompt = buildExtractionPrompt(imagePaths)
       const result = await runCommand(command, prompt, config.llmTimeoutMs)
 
+      if (result.outputOverflow) {
+        await api.fail(
+          job.runId,
+          `LLM 実行の出力が上限（${MAX_OUTPUT_BYTES} bytes）を超えたため中断しました`,
+          job.attemptCount,
+        )
+        return
+      }
       if (result.timedOut) {
         await api.fail(
           job.runId,
