@@ -17,6 +17,8 @@ type AllowedFormat = keyof typeof ALLOWED_FORMATS
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024 // 1枚 ≤ 10MB（prd/04 §7）
 export const MAX_IMAGES_PER_RUN = 5 // 1 run 最大5枚（prd/04 §7）
+// 入力画素数の上限（デコード爆弾・過大メモリ対策）。スクショには十分な 40MP。
+export const MAX_IMAGE_PIXELS = 40_000_000
 
 export interface SanitizedImage {
   data: Buffer
@@ -29,22 +31,35 @@ export interface SanitizedImage {
 /** 入力が受理フォーマットの画像かをデコードで確かめ、メタデータを落として再エンコードする。 */
 export async function sanitizeImage(input: Uint8Array): Promise<SanitizedImage> {
   // EXIF orientation を画素に焼き込む（メタデータを落としても向きが変わらないように）。
-  const image = sharp(input).rotate()
+  // limitInputPixels でデコード段階から過大画像を弾く（sharp 既定より厳しめ）。
+  const image = sharp(input, { limitInputPixels: MAX_IMAGE_PIXELS }).rotate()
   const metadata = await image.metadata().catch(() => null)
   const format = metadata?.format
   if (!metadata || !format || !(format in ALLOWED_FORMATS)) {
     throw new ImageValidationError('画像は PNG / JPEG / WebP のみ受理します')
   }
+  if (metadata.width && metadata.height && metadata.width * metadata.height > MAX_IMAGE_PIXELS) {
+    throw new ImageValidationError('画像の解像度が大きすぎます')
+  }
   const allowed = ALLOWED_FORMATS[format as AllowedFormat]
-  const { data, info } = await image
+  // デコード失敗・limitInputPixels 超過などは null にして 422 に落とす。
+  const encoded = await image
     .toFormat(format as AllowedFormat)
     .toBuffer({ resolveWithObject: true })
+    .catch(() => null)
+  if (!encoded) {
+    throw new ImageValidationError('画像を処理できませんでした')
+  }
+  // 再エンコード後の実バイト数も上限内であることを保証する（入力が小さくても膨らみ得る）。
+  if (encoded.data.byteLength > MAX_IMAGE_BYTES) {
+    throw new ImageValidationError('画像サイズが上限（10MB）を超えています')
+  }
   return {
-    data,
+    data: encoded.data,
     contentType: allowed.contentType,
     ext: allowed.ext,
-    width: info.width,
-    height: info.height,
+    width: encoded.info.width,
+    height: encoded.info.height,
   }
 }
 
