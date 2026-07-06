@@ -2,6 +2,7 @@
 // エラー時の自動リトライはしない（即 fail 報告 → 人間が UI から再解析。prd/04 §9.5）。
 
 import { spawn } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -35,7 +36,12 @@ interface CommandResult {
  * （シェルだけ殺すと LLM CLI やパイプラインの子プロセスが残るため）。
  * stdout/stderr はバイト上限で打ち切り、無制限のメモリ連結による OOM を防ぐ。
  */
-function runCommand(command: string, stdin: string, timeoutMs: number): Promise<CommandResult> {
+function runCommand(
+  command: string,
+  stdin: string,
+  timeoutMs: number,
+  watchOutputPath?: string,
+): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('/bin/sh', ['-c', command], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -61,6 +67,25 @@ function runCommand(command: string, stdin: string, timeoutMs: number): Promise<
       killGroup()
     }, timeoutMs)
 
+    // {output} 構成では出力ファイルを**実行中も**監視し、上限超過ならその場でグループを kill する
+    // （終了後の stat だけだと、書き続けられてディスクを枯渇させられるため。HSF-F9DE08A5）。
+    const watcher = watchOutputPath
+      ? setInterval(() => {
+          try {
+            if (statSync(watchOutputPath).size > MAX_OUTPUT_BYTES) {
+              outputOverflow = true
+              killGroup()
+            }
+          } catch {
+            // ファイル未作成など。次の tick で再確認。
+          }
+        }, 500)
+      : undefined
+    const cleanup = () => {
+      clearTimeout(timer)
+      if (watcher) clearInterval(watcher)
+    }
+
     child.stdout.on('data', (chunk: Buffer) => {
       stdoutBytes += chunk.length
       if (stdoutBytes > MAX_OUTPUT_BYTES) {
@@ -80,11 +105,11 @@ function runCommand(command: string, stdin: string, timeoutMs: number): Promise<
       stderr += chunk.toString()
     })
     child.on('error', (e) => {
-      clearTimeout(timer)
+      cleanup()
       reject(e)
     })
     child.on('close', (code) => {
-      clearTimeout(timer)
+      cleanup()
       resolve({ code, stdout, stderr, timedOut, outputOverflow })
     })
     // 子が即死して stdin が閉じると EPIPE。握りつぶす（close で結果を返す）。
@@ -133,7 +158,9 @@ export async function processJob(
         model: config.llmModel,
       })
       const prompt = buildExtractionPrompt(imagePaths)
-      const result = await runCommand(command, prompt, config.llmTimeoutMs)
+      // {output} 構成では実行中もファイルサイズを監視させる（stdout 構成では監視不要）。
+      const watchOutputPath = usesOutputFile(config.llmCommand) ? outputPath : undefined
+      const result = await runCommand(command, prompt, config.llmTimeoutMs, watchOutputPath)
 
       if (result.outputOverflow) {
         await api.fail(
