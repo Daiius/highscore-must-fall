@@ -430,7 +430,10 @@ export type RequeueResult = 'not_found' | 'run_not_draft' | 'already_running' | 
 
 /**
  * 同一 job 行を queued に戻す（1:1・再キュー方式。prd/04 §9.1）。
- * run が draft のときのみ（confirmed は「下書きに戻す」を経由）。running 中は拒否。
+ * run が draft のときのみ（confirmed は「下書きに戻す」を経由）。
+ * running でも lease 超過なら停止した worker のジョブとみなして再キューを許可する
+ * （唯一の worker が claim 後に停止すると次の claim が来ず running のまま残るため。HSF-1AC17E34。
+ * lease 失効は本来 claim 時にも回収するが、それに依存せず再解析から復旧できるようにする）。
  * run → job の順で行ロックし、判定と更新の間に状態が変わる競合（claim / 確定）を防ぐ。
  */
 export async function requeueAnalysis(ownerId: string, runId: string): Promise<RequeueResult> {
@@ -447,14 +450,16 @@ export async function requeueAnalysis(ownerId: string, runId: string): Promise<R
       if (runRow.status !== 'draft') return 'run_not_draft'
 
       const jobRows = await tx
-        .select({ status: analysisJob.status })
+        .select({ status: analysisJob.status, leasedUntil: analysisJob.leasedUntil })
         .from(analysisJob)
         .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
         .limit(1)
         .for('update')
       const jobRow = jobRows[0]
       if (!jobRow) return 'not_found'
-      if (jobRow.status === 'running') return 'already_running'
+      // lease がまだ有効な running のみ拒否する（超過 running は停止 worker とみなし再キュー）。
+      const leaseActive = jobRow.leasedUntil != null && jobRow.leasedUntil.getTime() > Date.now()
+      if (jobRow.status === 'running' && leaseActive) return 'already_running'
       if (jobRow.status === 'queued') return 'queued' // 冪等。
 
       await tx
