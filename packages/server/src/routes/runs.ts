@@ -103,6 +103,9 @@ export const runsRoute = new Hono<AppEnv>()
       const body = c.req.valid('json')
       const result = await updateRunStatus(owner.id, c.req.param('id'), body.status)
       if (result.kind === 'not_found') return c.json({ error: 'not found' }, 404)
+      if (result.kind === 'analysis_in_progress') {
+        return c.json({ ok: false, error: 'analysis in progress' }, 409)
+      }
       if (result.kind === 'invalid') return c.json({ ok: false, issues: result.issues }, 422)
       return c.json({ ok: true, status: result.status, issues: result.issues })
     },

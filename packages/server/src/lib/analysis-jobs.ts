@@ -305,14 +305,22 @@ export async function completeJob(
 ): Promise<CompleteJobResult> {
   return withDeadlockRetry(() =>
     db.transaction(async (tx): Promise<CompleteJobResult> => {
-      // この試行が今も有効か、行ロックで直列化して確認する（lease 超過→再キューで別 attempt が
-      // 走っている stale worker の遅延応答、および並行 complete による上書きを弾く。prd/04 §9.5）。
+      // run → job の順で行ロックし直列化する（updateRunStatus / requeueAnalysis と同順で
+      // デッドロックを避ける）。run が draft でない（人手で確定済み等）なら結果で上書きしない。
+      const runRows = await tx
+        .select({ status: run.status, ownerId: run.ownerId })
+        .from(run)
+        .where(eq(run.id, runId))
+        .limit(1)
+        .for('update')
+      const runRow = runRows[0]
+      if (runRow?.status !== 'draft') return { kind: 'not_running' }
+      const ownerId = runRow.ownerId
+
+      // この試行が今も有効か照合する（lease 超過→再キューで別 attempt が走っている stale worker の
+      // 遅延応答、および並行 complete による上書きを弾く。prd/04 §9.5）。
       const jobRows = await tx
-        .select({
-          status: analysisJob.status,
-          ownerId: analysisJob.ownerId,
-          attemptCount: analysisJob.attemptCount,
-        })
+        .select({ status: analysisJob.status, attemptCount: analysisJob.attemptCount })
         .from(analysisJob)
         .where(eq(analysisJob.runId, runId))
         .limit(1)
@@ -321,7 +329,6 @@ export async function completeJob(
       if (job?.status !== 'running' || job.attemptCount !== attempt) {
         return { kind: 'not_running' }
       }
-      const ownerId = job.ownerId
 
       const canonical = toCanonicalRunRecord(extractionToFlatRecord(extraction))
       const validation = validateRunRecord(canonical)
@@ -397,7 +404,9 @@ export async function completeJob(
       await tx.delete(rewardEntry).where(eq(rewardEntry.runId, runId))
       await writeRunChildren(tx, { record, runId, ownerId })
 
-      // section の埋め戻し（検証済みの一意対応のみ）。
+      // section の埋め戻し。再解析で前回の分類が残らないよう、まず全画像を other へ戻してから
+      // 今回の検証済み一意対応を適用する（未分類・範囲外の画像に古い section を残さない）。
+      await tx.update(runImage).set({ section: 'other' }).where(eq(runImage.runId, runId))
       for (const [id, section] of resolvedSections) {
         await tx
           .update(runImage)
@@ -422,25 +431,39 @@ export type RequeueResult = 'not_found' | 'run_not_draft' | 'already_running' | 
 /**
  * 同一 job 行を queued に戻す（1:1・再キュー方式。prd/04 §9.1）。
  * run が draft のときのみ（confirmed は「下書きに戻す」を経由）。running 中は拒否。
+ * run → job の順で行ロックし、判定と更新の間に状態が変わる競合（claim / 確定）を防ぐ。
  */
 export async function requeueAnalysis(ownerId: string, runId: string): Promise<RequeueResult> {
-  const rows = await db
-    .select({ jobStatus: analysisJob.status, runStatus: run.status })
-    .from(analysisJob)
-    .innerJoin(run, eq(analysisJob.runId, run.id))
-    .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
-    .limit(1)
-  const current = rows[0]
-  if (!current) return 'not_found'
-  if (current.runStatus !== 'draft') return 'run_not_draft'
-  if (current.jobStatus === 'running') return 'already_running'
-  if (current.jobStatus === 'queued') return 'queued' // 冪等。
+  return withDeadlockRetry(() =>
+    db.transaction(async (tx): Promise<RequeueResult> => {
+      const runRows = await tx
+        .select({ status: run.status })
+        .from(run)
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+        .limit(1)
+        .for('update')
+      const runRow = runRows[0]
+      if (!runRow) return 'not_found'
+      if (runRow.status !== 'draft') return 'run_not_draft'
 
-  await db
-    .update(analysisJob)
-    .set({ status: 'queued', lastError: null, leasedUntil: null })
-    .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
-  return 'queued'
+      const jobRows = await tx
+        .select({ status: analysisJob.status })
+        .from(analysisJob)
+        .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
+        .limit(1)
+        .for('update')
+      const jobRow = jobRows[0]
+      if (!jobRow) return 'not_found'
+      if (jobRow.status === 'running') return 'already_running'
+      if (jobRow.status === 'queued') return 'queued' // 冪等。
+
+      await tx
+        .update(analysisJob)
+        .set({ status: 'queued', lastError: null, leasedUntil: null })
+        .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
+      return 'queued'
+    }),
+  )
 }
 
 /** run 削除時の blob 掃除用に storage key 一覧を返す。 */

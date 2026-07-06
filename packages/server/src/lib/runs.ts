@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import {
+  analysisJob,
   catalogAlias,
   db,
   rewardCatalog,
@@ -276,6 +277,7 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
 export type UpdateRunStatusResult =
   | { kind: 'not_found' }
   | { kind: 'invalid'; issues: ValidationIssue[] }
+  | { kind: 'analysis_in_progress' }
   | { kind: 'updated'; status: RunStatus; issues: ValidationIssue[] }
 
 /**
@@ -283,6 +285,8 @@ export type UpdateRunStatusResult =
  *   - draft → confirmed: 保存済み raw_payload を現行契約で再検証し、error があれば遷移しない。
  *     現状の draft は error なしでしか保存できないためほぼ素通りだが、部分ドラフト
  *     （緩い draft 契約）導入後もこの再検証が確定条件を保つ。
+ *     解析中（analysis_job が queued/running）の run は、中身が未確定なので確定を拒否する
+ *     （worker の complete と競合させない。frontend でもボタンを止めるが backend で確実に弾く）。
  *   - confirmed → draft（再ドラフト）: 修正作業用。検証なしで戻す。
  * 同じ status への遷移は冪等に成功。
  */
@@ -291,31 +295,50 @@ export async function updateRunStatus(
   runId: string,
   status: RunStatus,
 ): Promise<UpdateRunStatusResult> {
-  const rows = await db
-    .select({ status: run.status })
-    .from(run)
-    .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
-    .limit(1)
-  const current = rows[0]
-  if (!current) return { kind: 'not_found' }
-  if (current.status === status) return { kind: 'updated', status, issues: [] }
+  return withDeadlockRetry(() =>
+    db.transaction(async (tx): Promise<UpdateRunStatusResult> => {
+      // run → job の順で行ロックする（completeJob / requeueAnalysis と同順でデッドロック回避）。
+      // 判定〜更新の間に worker の claim / complete が割り込むのを防ぐ。
+      const rows = await tx
+        .select({ status: run.status })
+        .from(run)
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+        .limit(1)
+        .for('update')
+      const current = rows[0]
+      if (!current) return { kind: 'not_found' }
+      if (current.status === status) return { kind: 'updated', status, issues: [] }
 
-  let issues: ValidationIssue[] = []
-  if (status === 'confirmed') {
-    const payloadRows = await db
-      .select({ rawPayload: runPayload.rawPayload })
-      .from(runPayload)
-      .where(and(eq(runPayload.runId, runId), eq(runPayload.ownerId, ownerId)))
-      .limit(1)
-    // payload 欠落（想定外）も Zod エラーとして invalid に落ちる。
-    const result = validateRunRecord(payloadRows[0]?.rawPayload)
-    if (!result.ok) return { kind: 'invalid', issues: result.issues }
-    issues = result.issues
-  }
+      let issues: ValidationIssue[] = []
+      if (status === 'confirmed') {
+        // 解析中は確定不可（自動解析 run のみ analysis_job を持つ。手動 run は素通り）。
+        const jobRows = await tx
+          .select({ status: analysisJob.status })
+          .from(analysisJob)
+          .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
+          .limit(1)
+          .for('update')
+        const jobStatus = jobRows[0]?.status
+        if (jobStatus === 'queued' || jobStatus === 'running') {
+          return { kind: 'analysis_in_progress' }
+        }
 
-  await db
-    .update(run)
-    .set({ status })
-    .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
-  return { kind: 'updated', status, issues }
+        const payloadRows = await tx
+          .select({ rawPayload: runPayload.rawPayload })
+          .from(runPayload)
+          .where(and(eq(runPayload.runId, runId), eq(runPayload.ownerId, ownerId)))
+          .limit(1)
+        // payload 欠落（想定外）も Zod エラーとして invalid に落ちる。
+        const result = validateRunRecord(payloadRows[0]?.rawPayload)
+        if (!result.ok) return { kind: 'invalid', issues: result.issues }
+        issues = result.issues
+      }
+
+      await tx
+        .update(run)
+        .set({ status })
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+      return { kind: 'updated', status, issues }
+    }),
+  )
 }

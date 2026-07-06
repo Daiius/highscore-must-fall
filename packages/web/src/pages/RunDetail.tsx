@@ -166,6 +166,12 @@ export function RunDetail() {
         clearSession()
         return
       }
+      if (res.status === 409) {
+        // 解析中に確定を試みた（通常ボタンは隠れているが、解析開始と競合した場合の保険）。
+        setActionError('解析中は確定できません。解析の完了後にもう一度お試しください。')
+        void fetchRun()
+        return
+      }
       const data = (await res.json()) as { ok?: boolean; issues?: Issue[] }
       if (res.ok && data.ok) {
         setRun((prev) => (prev ? { ...prev, status } : prev))
@@ -203,7 +209,8 @@ export function RunDetail() {
           <p className="text-slate-400 text-sm">{formatDate(run.playedAt)}</p>
         </div>
         <div className="relative flex gap-3">
-          {run.status === 'draft' && (
+          {/* 解析中（queued/running）は中身が未確定なので確定ボタンを出さない（backend でも 409 で拒否）。 */}
+          {run.status === 'draft' && !isAnalysisActive(run.analysisJob?.status) && (
             <button
               type="button"
               onClick={() => void changeStatus('confirmed')}
