@@ -2,7 +2,7 @@
 // エラー時の自動リトライはしない（即 fail 報告 → 人間が UI から再解析。prd/04 §9.5）。
 
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { screenshotExtractionJsonSchema } from 'shared'
@@ -160,9 +160,25 @@ export async function processJob(
         return
       }
 
-      const raw = usesOutputFile(config.llmCommand)
-        ? await readFile(outputPath, 'utf8')
-        : result.stdout
+      let raw: string
+      if (usesOutputFile(config.llmCommand)) {
+        // 出力ファイルも読み込む前にサイズ上限を確認する（stdout/stderr と同じ上限。
+        // 異常な CLI が巨大ファイルを吐いても無制限 readFile で OOM/ディスク枯渇しないように）。
+        const size = await stat(outputPath)
+          .then((s) => s.size)
+          .catch(() => 0)
+        if (size > MAX_OUTPUT_BYTES) {
+          await api.fail(
+            job.runId,
+            `LLM 出力ファイルが上限（${MAX_OUTPUT_BYTES} bytes）を超えました（${size} bytes）`,
+            job.attemptCount,
+          )
+          return
+        }
+        raw = await readFile(outputPath, 'utf8')
+      } else {
+        raw = result.stdout
+      }
       const extraction = parseExtractionOutput(raw)
 
       // LLM 出力の index → run_image.id。範囲外や欠けは無視（欠けた画像は section=other のまま）。
