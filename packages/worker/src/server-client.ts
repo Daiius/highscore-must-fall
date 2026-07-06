@@ -16,6 +16,8 @@ export interface ClaimedJob {
 export interface CompleteBody {
   extraction: ScreenshotExtraction
   images: { id: string; section: ExtractionSection }[]
+  /** claim で受け取った試行番号。server が照合し stale worker を弾く。 */
+  attempt: number
   llmModel?: string
 }
 
@@ -48,10 +50,16 @@ export class WorkerApi {
   }
 
   /** 処理入力の画像を取得してファイルへ保存する。 */
-  async downloadImage(runId: string, imageId: string, destPath: string): Promise<void> {
+  async downloadImage(
+    runId: string,
+    imageId: string,
+    destPath: string,
+    attempt: number,
+  ): Promise<void> {
     const res = await ensureOk(
       await this.client.api.worker.jobs[':runId'].images[':imageId'].$get({
         param: { runId, imageId },
+        query: { attempt: String(attempt) },
       }),
       `download image ${imageId}`,
     )
@@ -71,11 +79,11 @@ export class WorkerApi {
   }
 
   /** エラーを報告してジョブを failed にする。 */
-  async fail(runId: string, message: string): Promise<void> {
+  async fail(runId: string, message: string, attempt: number): Promise<void> {
     await ensureOk(
       await this.client.api.worker.jobs[':runId'].fail.$post({
         param: { runId },
-        json: { message },
+        json: { message, attempt },
       }),
       'fail',
     )

@@ -77,7 +77,7 @@ export async function processJob(
       for (const [index, image] of job.images.entries()) {
         const ext = EXT_BY_CONTENT_TYPE[image.contentType] ?? 'bin'
         const dest = path.join(workDir, `image-${index}.${ext}`)
-        await api.downloadImage(job.runId, image.id, dest)
+        await api.downloadImage(job.runId, image.id, dest, job.attemptCount)
         imagePaths.push(dest)
       }
 
@@ -97,13 +97,18 @@ export async function processJob(
       const result = await runCommand(command, prompt, config.llmTimeoutMs)
 
       if (result.timedOut) {
-        await api.fail(job.runId, `LLM 実行がタイムアウトしました（${config.llmTimeoutMs}ms）`)
+        await api.fail(
+          job.runId,
+          `LLM 実行がタイムアウトしました（${config.llmTimeoutMs}ms）`,
+          job.attemptCount,
+        )
         return
       }
       if (result.code !== 0) {
         await api.fail(
           job.runId,
           describeFailure(`LLM 実行が終了コード ${result.code} で失敗しました`, result),
+          job.attemptCount,
         )
         return
       }
@@ -122,6 +127,7 @@ export async function processJob(
       const outcome = await api.complete(job.runId, {
         extraction,
         images: imageSections,
+        attempt: job.attemptCount,
         llmModel: config.llmModel,
       })
       if (outcome.kind === 'saved') {
@@ -132,7 +138,7 @@ export async function processJob(
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       console.error(`[worker] run ${job.runId}: 失敗 — ${message}`)
-      await api.fail(job.runId, message)
+      await api.fail(job.runId, message, job.attemptCount)
     }
   } finally {
     await rm(workDir, { recursive: true, force: true })

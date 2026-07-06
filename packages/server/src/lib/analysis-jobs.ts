@@ -67,10 +67,14 @@ export async function createScreenshotSubmission(
     return { imageId, storageKey: `runs/${runId}/${imageId}.${image.ext}`, image }
   })
 
-  for (const { storageKey, image } of stored) {
-    await blobStore.put(storageKey, image.data, image.contentType)
-  }
+  // put も DB も同じ try で囲む。put ループの途中失敗でも、成功済みの blob を漏れなく
+  // 掃除する（DB 行が無いと通常の run 削除でも回収できず孤児 blob になるため）。
+  const putKeys: string[] = []
   try {
+    for (const { storageKey, image } of stored) {
+      await blobStore.put(storageKey, image.data, image.contentType)
+      putKeys.push(storageKey)
+    }
     await db.transaction(async (tx) => {
       // 空の draft run（コア指標 NULL）。played_at は投入時刻（解析結果に日時は無い）。
       await tx.insert(run).values({
@@ -97,7 +101,7 @@ export async function createScreenshotSubmission(
       await tx.insert(analysisJob).values({ runId, ownerId })
     })
   } catch (e) {
-    await Promise.allSettled(stored.map(({ storageKey }) => blobStore.delete(storageKey)))
+    await Promise.allSettled(putKeys.map((storageKey) => blobStore.delete(storageKey)))
     throw e
   }
   return { runId }
@@ -161,14 +165,22 @@ export async function claimNextJob(): Promise<ClaimedJob | null> {
   )
 }
 
-/** worker がダウンロードする画像（running ジョブの run に属するもののみ）。 */
-export async function getJobImage(runId: string, imageId: string) {
+/**
+ * worker がダウンロードする画像（running ジョブの run に属するもののみ）。
+ * `attempt` を照合し、lease 超過→再キューで別 attempt が走っている stale worker には返さない。
+ */
+export async function getJobImage(runId: string, imageId: string, attempt: number) {
   const rows = await db
     .select({ storageKey: runImage.storageKey, contentType: runImage.contentType })
     .from(runImage)
     .innerJoin(analysisJob, eq(analysisJob.runId, runImage.runId))
     .where(
-      and(eq(runImage.id, imageId), eq(runImage.runId, runId), eq(analysisJob.status, 'running')),
+      and(
+        eq(runImage.id, imageId),
+        eq(runImage.runId, runId),
+        eq(analysisJob.status, 'running'),
+        eq(analysisJob.attemptCount, attempt),
+      ),
     )
     .limit(1)
   return rows[0] ?? null
@@ -176,12 +188,21 @@ export async function getJobImage(runId: string, imageId: string) {
 
 // --- worker: fail ----------------------------------------------------------------------
 
-/** running のジョブを failed にする（worker からのエラー報告）。対象が無ければ false。 */
-export async function failJob(runId: string, message: string): Promise<boolean> {
+/**
+ * running のジョブを failed にする（worker からのエラー報告）。対象が無ければ false。
+ * `attempt` を照合し、古い試行の遅延エラー報告で新しい試行を failed にしない。
+ */
+export async function failJob(runId: string, message: string, attempt: number): Promise<boolean> {
   const [header] = await db
     .update(analysisJob)
     .set({ status: 'failed', lastError: truncateError(message), leasedUntil: null })
-    .where(and(eq(analysisJob.runId, runId), eq(analysisJob.status, 'running')))
+    .where(
+      and(
+        eq(analysisJob.runId, runId),
+        eq(analysisJob.status, 'running'),
+        eq(analysisJob.attemptCount, attempt),
+      ),
+    )
   return header.affectedRows > 0
 }
 
@@ -198,11 +219,28 @@ export type CompleteJobResult =
   | { kind: 'completed'; status: 'draft' | 'confirmed'; issues: ValidationIssue[] }
 
 /**
- * 自動確定ゲート（prd/04 §9.4）の「全 section 揃い」判定。
- * result / upgrade_history / reward_ledger が各 1 枚以上に分類されていること。
+ * worker 提出の section 対応を run の実画像集合で検証し、id→section の一意な対応に畳む。
+ * 実在しない id は捨て、同一 id の重複分類は最初の 1 件だけ採る（各画像は高々 1 分類）。
+ * これにより「同じ画像 id を複数 section で送って全 section ゲートを騙す」を防ぐ（prd/04 §9.4）。
  */
-function hasAllSections(imageSections: CompletedImageSection[]): boolean {
-  const sections = new Set(imageSections.map((i) => i.section))
+function resolveImageSections(
+  imageSections: CompletedImageSection[],
+  runImageIds: Set<string>,
+): Map<string, ExtractionSection> {
+  const resolved = new Map<string, ExtractionSection>()
+  for (const { id, section } of imageSections) {
+    if (!runImageIds.has(id)) continue
+    if (!resolved.has(id)) resolved.set(id, section)
+  }
+  return resolved
+}
+
+/**
+ * 自動確定ゲート（prd/04 §9.4）の「全 section 揃い」判定。
+ * result / upgrade_history / reward_ledger が各 1 枚以上の実画像に分類されていること。
+ */
+function hasAllSections(resolved: Map<string, ExtractionSection>): boolean {
+  const sections = new Set(resolved.values())
   return sections.has('result') && sections.has('upgrade_history') && sections.has('reward_ledger')
 }
 
@@ -262,40 +300,61 @@ export async function completeJob(
   runId: string,
   extraction: ScreenshotExtraction,
   imageSections: CompletedImageSection[],
+  attempt: number,
   llmModel?: string,
 ): Promise<CompleteJobResult> {
-  const jobRows = await db
-    .select({ status: analysisJob.status, ownerId: analysisJob.ownerId })
-    .from(analysisJob)
-    .where(eq(analysisJob.runId, runId))
-    .limit(1)
-  const job = jobRows[0]
-  if (job?.status !== 'running') return { kind: 'not_running' }
-  const ownerId = job.ownerId
+  return withDeadlockRetry(() =>
+    db.transaction(async (tx): Promise<CompleteJobResult> => {
+      // この試行が今も有効か、行ロックで直列化して確認する（lease 超過→再キューで別 attempt が
+      // 走っている stale worker の遅延応答、および並行 complete による上書きを弾く。prd/04 §9.5）。
+      const jobRows = await tx
+        .select({
+          status: analysisJob.status,
+          ownerId: analysisJob.ownerId,
+          attemptCount: analysisJob.attemptCount,
+        })
+        .from(analysisJob)
+        .where(eq(analysisJob.runId, runId))
+        .limit(1)
+        .for('update')
+      const job = jobRows[0]
+      if (job?.status !== 'running' || job.attemptCount !== attempt) {
+        return { kind: 'not_running' }
+      }
+      const ownerId = job.ownerId
 
-  const canonical = toCanonicalRunRecord(extractionToFlatRecord(extraction))
-  const validation = validateRunRecord(canonical)
-  if (!validation.ok || !validation.record) {
-    const summary = validation.issues
-      .filter((i) => i.level === 'error')
-      .map((i) => `${i.path.join('.') || '-'}: ${i.message}`)
-      .join('\n')
-    await db
-      .update(analysisJob)
-      .set({
-        status: 'failed',
-        lastError: truncateError(`解析結果が検証を通りませんでした:\n${summary}`),
-        leasedUntil: null,
-        llmModel,
-      })
-      .where(and(eq(analysisJob.runId, runId), eq(analysisJob.status, 'running')))
-    return { kind: 'invalid_record', issues: validation.issues }
-  }
-  const record = validation.record
-  const warnings = validation.issues.filter((i) => i.level === 'warning')
+      const canonical = toCanonicalRunRecord(extractionToFlatRecord(extraction))
+      const validation = validateRunRecord(canonical)
+      if (!validation.ok || !validation.record) {
+        const summary = validation.issues
+          .filter((i) => i.level === 'error')
+          .map((i) => `${i.path.join('.') || '-'}: ${i.message}`)
+          .join('\n')
+        // ロック済み・attempt 確認済みなので runId のみで安全に failed にできる。
+        await tx
+          .update(analysisJob)
+          .set({
+            status: 'failed',
+            lastError: truncateError(`解析結果が検証を通りませんでした:\n${summary}`),
+            leasedUntil: null,
+            llmModel,
+          })
+          .where(eq(analysisJob.runId, runId))
+        return { kind: 'invalid_record', issues: validation.issues }
+      }
+      const record = validation.record
+      const warnings = validation.issues.filter((i) => i.level === 'warning')
 
-  const status = await withDeadlockRetry(() =>
-    db.transaction(async (tx) => {
+      // 提出 section を run の実画像集合で検証（実在・一意な id のみ採用）。
+      const runImageRows = await tx
+        .select({ id: runImage.id })
+        .from(runImage)
+        .where(eq(runImage.runId, runId))
+      const resolvedSections = resolveImageSections(
+        imageSections,
+        new Set(runImageRows.map((r) => r.id)),
+      )
+
       // 自動確定ゲート（unverified 自動登録より先に判定する）。
       const upgradeKeys = [
         ...new Set(
@@ -305,7 +364,7 @@ export async function completeJob(
       const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))]
       const autoConfirm =
         warnings.length === 0 &&
-        hasAllSections(imageSections) &&
+        hasAllSections(resolvedSections) &&
         (await allNamesVerified(tx, upgradeKeys, rewardKeys))
       const nextStatus: 'draft' | 'confirmed' = autoConfirm ? 'confirmed' : 'draft'
 
@@ -338,12 +397,12 @@ export async function completeJob(
       await tx.delete(rewardEntry).where(eq(rewardEntry.runId, runId))
       await writeRunChildren(tx, { record, runId, ownerId })
 
-      // section の埋め戻し（この run の画像のみ・worker の分類結果で更新）。
-      for (const image of imageSections) {
+      // section の埋め戻し（検証済みの一意対応のみ）。
+      for (const [id, section] of resolvedSections) {
         await tx
           .update(runImage)
-          .set({ section: image.section })
-          .where(and(eq(runImage.id, image.id), eq(runImage.runId, runId)))
+          .set({ section })
+          .where(and(eq(runImage.id, id), eq(runImage.runId, runId)))
       }
 
       await tx
@@ -351,11 +410,9 @@ export async function completeJob(
         .set({ status: 'succeeded', lastError: null, leasedUntil: null, llmModel })
         .where(eq(analysisJob.runId, runId))
 
-      return nextStatus
+      return { kind: 'completed', status: nextStatus, issues: warnings }
     }),
   )
-
-  return { kind: 'completed', status, issues: warnings }
 }
 
 // --- 再解析（人間起点の再キュー）--------------------------------------------------------

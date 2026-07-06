@@ -43,16 +43,23 @@ const requireWorkerToken: MiddlewareHandler = async (c, next) => {
   await next()
 }
 
+/** claim で受け取った試行番号。complete/fail/画像取得で照合し stale worker を弾く（prd/04 §9.5）。 */
+const attemptField = z.coerce.number().int().min(1)
+
 const completeBody = z.object({
   extraction: ScreenshotExtractionSchema,
   /** run_image.id → section の対応（worker が LLM 出力の index を id へ引き直した結果）。 */
   images: z.array(z.object({ id: z.string().max(36), section: z.enum(EXTRACTION_SECTIONS) })),
+  attempt: attemptField,
   llmModel: z.string().max(128).optional(),
 })
 
 const failBody = z.object({
   message: z.string().min(1).max(65_535),
+  attempt: attemptField,
 })
+
+const imageQuery = z.object({ attempt: attemptField })
 
 export const workerRoute = new Hono()
   .use('*', requireWorkerToken)
@@ -60,15 +67,16 @@ export const workerRoute = new Hono()
     const job = await claimNextJob()
     return c.json({ job })
   })
-  .get('/jobs/:runId/images/:imageId', async (c) => {
-    const image = await getJobImage(c.req.param('runId'), c.req.param('imageId'))
+  .get('/jobs/:runId/images/:imageId', zValidator('query', imageQuery), async (c) => {
+    const { attempt } = c.req.valid('query')
+    const image = await getJobImage(c.req.param('runId'), c.req.param('imageId'), attempt)
     if (!image) return c.json({ error: 'not found' }, 404)
     const stream = await blobStore.getStream(image.storageKey)
     return c.body(stream, 200, { 'Content-Type': image.contentType })
   })
   .post('/jobs/:runId/complete', limitIngestBody, zValidator('json', completeBody), async (c) => {
-    const { extraction, images, llmModel } = c.req.valid('json')
-    const result = await completeJob(c.req.param('runId'), extraction, images, llmModel)
+    const { extraction, images, attempt, llmModel } = c.req.valid('json')
+    const result = await completeJob(c.req.param('runId'), extraction, images, attempt, llmModel)
     if (result.kind === 'not_running') return c.json({ ok: false, error: 'job not running' }, 409)
     if (result.kind === 'invalid_record') {
       // ジョブは failed 済み。worker 側の追加処理は不要（issues は記録・デバッグ用）。
@@ -77,7 +85,8 @@ export const workerRoute = new Hono()
     return c.json({ ok: true, status: result.status, issues: result.issues })
   })
   .post('/jobs/:runId/fail', limitIngestBody, zValidator('json', failBody), async (c) => {
-    const failed = await failJob(c.req.param('runId'), c.req.valid('json').message)
+    const { message, attempt } = c.req.valid('json')
+    const failed = await failJob(c.req.param('runId'), message, attempt)
     if (!failed) return c.json({ ok: false, error: 'job not running' }, 409)
     return c.json({ ok: true })
   })
