@@ -45,6 +45,9 @@ catalogs:
     drizzle-zod:
       specifier: ^0.8.3
       version: 0.8.3
+    esbuild:
+      specifier: ^0.25.0
+      version: 0.25.12
     hono:
       specifier: ^4.12.15
       version: 4.12.27
@@ -166,6 +169,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.2
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.25.12
       tsx:
         specifier: 'catalog:'
         version: 4.22.4

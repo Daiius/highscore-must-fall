@@ -23,6 +23,8 @@ catalog:
   sharp: ^0.35.3
   # BlobStore の S3 互換アダプタ（本番 R2 / 開発 SeaweedFS。prd/02 §7）。
   "@aws-sdk/client-s3": ^3.1078.0
+  # 本番 server イメージのバンドラ（src + shared/database を単一ファイルへ。Dockerfile.prod）。
+  esbuild: ^0.25.0
 
   # --- DB (database) ---
   # ※ Drizzle は「最新 RC を積極採用」方針（Q17 例外）。exact pin で minimumReleaseAge を実質回避。
