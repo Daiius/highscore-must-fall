@@ -32,19 +32,29 @@ COPY packages/server   packages/server
 
 RUN pnpm --filter server build   # → packages/server/dist/server.js（sharp は external）
 
-# ---- runtime: バンドル + sharp のみ ----------------------------------------------------
+# sharp（バンドルできないネイティブ依存）を frozen lockfile から解決した実体として取り出す。
+# deploy は既存の store（上の frozen install 由来）からコピーするだけで、レジストリ解決を伴わない
+# ＝ commit 済み pnpm-lock.yaml と minimumReleaseAge を尊重する（prd/02 §6）。
+# --node-linker=hoisted で node_modules を平坦化し、sharp のクロージャを実ディレクトリで取り出す。
+RUN pnpm --filter server --node-linker=hoisted deploy --prod --legacy /deploy
+
+# ---- runtime: バンドル + sharp のクロージャのみ ----------------------------------------
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
 # server.js は ESM（.js）。Node に ESM と認識させるため type=module を置く。
-# sharp はネイティブ依存のため runtime で導入する（linux/amd64 のプリビルドバイナリ）。
-# バージョンは pnpm-workspace.yaml の catalog(sharp) と一致させること。
-RUN printf '{"private":true,"type":"module"}\n' > package.json \
-    && npm install --omit=dev sharp@0.35.3 \
-    && npm cache clean --force
+RUN printf '{"private":true,"type":"module"}\n' > package.json
 
 COPY --from=build /workspace/packages/server/dist/server.js ./server.js
+
+# sharp の実行時クロージャ（lockfile 固定の実体）を build stage からコピーする。
+# sharp 0.35.x の依存 = sharp 本体 + native @img/* + detect-libc + semver（後2つは依存ゼロ）。
+# 存在しないパスの COPY は build を失敗させるため、sharp 更新で依存が変わればここで検知できる。
+COPY --from=build /deploy/node_modules/sharp       ./node_modules/sharp
+COPY --from=build /deploy/node_modules/@img        ./node_modules/@img
+COPY --from=build /deploy/node_modules/detect-libc ./node_modules/detect-libc
+COPY --from=build /deploy/node_modules/semver      ./node_modules/semver
 
 # マイグレーションはイメージに含めない。デプロイ時に別途 `pnpm db:migrate` を実行する
 # （本番運用手順は非公開の運用メモ側）。
