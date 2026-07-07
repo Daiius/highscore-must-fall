@@ -1,0 +1,24 @@
+# docker build のコンテキストから除外（転送量削減 + シークレット混入防止）。
+# Dockerfile.prod は必要なパスだけ明示 COPY するが、二重の防御として除外しておく。
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+coverage
+*.log
+
+# シークレット・ローカル専用（絶対にイメージへ入れない）
+.env
+.env.*
+!.env.*.example
+.claude-personal
+.claude
+.claude-personal/**
+
+# 開発・成果物
+.git
+.github
+.playwright-mcp
+.vscode
+prd
