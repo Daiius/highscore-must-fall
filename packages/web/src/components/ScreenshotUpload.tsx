@@ -3,7 +3,8 @@
 // どの画像がどの画面（section）かは聞かない（LLM の分類に任せる）。
 //
 // 入力は 3 通り: ファイル選択 / ドラッグ&ドロップ / クリップボード貼り付け（⌘/Ctrl+V）。
-// いずれも既存リストに追記する（最大 MAX_IMAGES 枚）。
+// いずれも既存リストに追記する（最大 MAX_IMAGES 枚）。各画像は { id, file, url } で保持し、
+// プレビュー URL をファイルに追従させる（index 対応にしない）。id を React key にする。
 
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -13,6 +14,14 @@ import { useAuth } from '../lib/auth'
 const MAX_IMAGES = 5
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const ACCEPTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const OVER_LIMIT_MSG = `画像は最大 ${MAX_IMAGES} 枚までです`
+
+/** アップロード候補。プレビュー URL をファイルと同じ寿命で持つ。 */
+interface UploadItem {
+  id: number
+  file: File
+  url: string
+}
 
 /** DataTransfer（ドロップ / クリップボード共通）から対応画像だけ取り出す。 */
 function imageFilesFrom(dt: DataTransfer | null): File[] {
@@ -36,12 +45,25 @@ function imageFilesFrom(dt: DataTransfer | null): File[] {
 export function ScreenshotUpload() {
   const navigate = useNavigate()
   const { clearSession } = useAuth()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [files, setFiles] = useState<File[]>([])
-  const [previews, setPreviews] = useState<string[]>([])
+  const [items, setItems] = useState<UploadItem[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 単調増加 id（key の一意性を保証。同一ファイル再選択でも別項目になる）。
+  const nextId = useRef(0)
+  // 最新 items を副作用（追加/削除/アンマウント時の revoke）から参照するための鏡。
+  const itemsRef = useRef<UploadItem[]>([])
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+  // アンマウント時に残りの object URL を破棄。
+  useEffect(
+    () => () => {
+      for (const it of itemsRef.current) URL.revokeObjectURL(it.url)
+    },
+    [],
+  )
 
   // 既存リストに追記（型フィルタ・枚数上限）。paste/drop/選択の全経路で共通。
   const addFiles = useCallback((incoming: File[]) => {
@@ -50,25 +72,28 @@ export function ScreenshotUpload() {
       if (incoming.length > 0) setError('対応する画像は PNG / JPEG / WebP です')
       return
     }
-    setError(null)
-    setFiles((prev) => {
-      const merged = [...prev, ...accepted]
-      if (merged.length > MAX_IMAGES) {
-        setError(`画像は最大 ${MAX_IMAGES} 枚までです`)
-        return merged.slice(0, MAX_IMAGES)
-      }
-      return merged
-    })
+    const room = MAX_IMAGES - itemsRef.current.length
+    if (room <= 0) {
+      setError(OVER_LIMIT_MSG)
+      return
+    }
+    const take = accepted.slice(0, room)
+    setError(take.length < accepted.length ? OVER_LIMIT_MSG : null)
+    // URL 生成は updater の外で1回だけ（StrictMode の二重呼び出しでの URL リークを避ける）。
+    const created = take.map((file) => ({
+      id: nextId.current++,
+      file,
+      url: URL.createObjectURL(file),
+    }))
+    setItems((prev) => [...prev, ...created])
   }, [])
 
-  // サムネイル用の object URL を files に追従して生成・破棄する。
-  useEffect(() => {
-    const urls = files.map((f) => URL.createObjectURL(f))
-    setPreviews(urls)
-    return () => {
-      for (const u of urls) URL.revokeObjectURL(u)
-    }
-  }, [files])
+  const removeItem = useCallback((id: number) => {
+    setError(null)
+    const target = itemsRef.current.find((it) => it.id === id)
+    if (target) URL.revokeObjectURL(target.url)
+    setItems((prev) => prev.filter((it) => it.id !== id))
+  }, [])
 
   // ページ上のどこで ⌘/Ctrl+V しても貼り付けを拾う（テキスト入力中は邪魔しない）。
   useEffect(() => {
@@ -86,23 +111,18 @@ export function ScreenshotUpload() {
     return () => document.removeEventListener('paste', onPaste)
   }, [addFiles])
 
-  function removeFile(index: number) {
-    setError(null)
-    setFiles((prev) => prev.filter((_, i) => i !== index))
-  }
-
   async function submit() {
-    if (files.length === 0) return
-    const oversize = files.find((f) => f.size > MAX_IMAGE_BYTES)
+    if (items.length === 0) return
+    const oversize = items.find((it) => it.file.size > MAX_IMAGE_BYTES)
     if (oversize) {
-      setError(`${oversize.name || '画像'} が 10MB を超えています`)
+      setError(`${oversize.file.name || '画像'} が 10MB を超えています`)
       return
     }
     setBusy(true)
     setError(null)
     try {
       const form = new FormData()
-      for (const file of files) form.append('images', file)
+      for (const it of items) form.append('images', it.file)
       // 配列フィールドつき multipart は素の fetch で送る（cookie セッションを同送）。
       const res = await fetch(`${API_BASE_URL}/api/screenshots`, {
         method: 'POST',
@@ -157,7 +177,6 @@ export function ScreenshotUpload() {
       >
         <div className="flex flex-wrap items-center gap-3">
           <input
-            ref={inputRef}
             type="file"
             accept="image/png,image/jpeg,image/webp"
             multiple
@@ -170,7 +189,7 @@ export function ScreenshotUpload() {
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={busy || files.length === 0}
+            disabled={busy || items.length === 0}
             className="rounded bg-indigo-600 px-4 py-1.5 font-medium text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {busy ? 'アップロード中…' : '解析を開始'}
@@ -182,28 +201,28 @@ export function ScreenshotUpload() {
         </p>
       </div>
 
-      {files.length > 0 && (
+      {items.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-3">
-          {files.map((f, i) => (
+          {items.map((it, i) => (
             <li
-              key={`${f.name}-${f.size}-${f.lastModified}`}
+              key={it.id}
               className="relative flex w-28 flex-col gap-1 rounded border border-slate-700 bg-slate-800/50 p-1.5"
             >
-              {previews[i] && (
-                <img
-                  src={previews[i]}
-                  alt={f.name || `画像 ${i + 1}`}
-                  className="h-16 w-full rounded object-cover"
-                />
-              )}
-              <span className="truncate text-slate-400 text-xs" title={f.name}>
-                {f.name || `画像 ${i + 1}`}
+              <img
+                src={it.url}
+                alt={it.file.name || `画像 ${i + 1}`}
+                className="h-16 w-full rounded object-cover"
+              />
+              <span className="truncate text-slate-400 text-xs" title={it.file.name}>
+                {it.file.name || `画像 ${i + 1}`}
               </span>
-              <span className="text-slate-500 text-xs">{(f.size / 1024 / 1024).toFixed(1)}MB</span>
+              <span className="text-slate-500 text-xs">
+                {(it.file.size / 1024 / 1024).toFixed(1)}MB
+              </span>
               <button
                 type="button"
-                onClick={() => removeFile(i)}
-                aria-label={`${f.name || `画像 ${i + 1}`} を削除`}
+                onClick={() => removeItem(it.id)}
+                aria-label={`${it.file.name || `画像 ${i + 1}`} を削除`}
                 className="absolute top-0.5 right-0.5 rounded bg-slate-900/80 px-1 text-slate-300 text-xs hover:bg-red-600 hover:text-white"
               >
                 ×
