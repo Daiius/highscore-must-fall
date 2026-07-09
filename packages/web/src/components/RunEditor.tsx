@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { type NameSuggestion, suggestSimilarNames } from 'shared'
 import { client } from '../api'
 import { callApi } from '../lib/api-result'
+import { useAuth } from '../lib/auth'
 import type { VerifiedCatalog } from '../lib/catalog'
 import {
   buildRecord,
@@ -20,6 +21,7 @@ import {
   type HistoryRow,
   historyNamePristine,
   historyRowChanged,
+  moveHistoryRow,
   newRowKey,
   RESULT_FIELDS,
   type RewardRow,
@@ -51,6 +53,7 @@ export function RunEditor({
   /** 保存成功。warning（要確認）が残ることがあるので呼び出し側へ渡す。 */
   onSaved: (issues: Issue[]) => void
 }) {
+  const { clearSession } = useAuth()
   const [state, setState] = useState<EditorState>(() => editorStateFromRun(run))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -93,7 +96,8 @@ export function RunEditor({
     } else if (result.error.kind === 'network') {
       setError('リクエストに失敗しました')
     } else if (result.error.kind === 'unauthorized') {
-      setError('セッションが切れました。ログインし直してください。')
+      // 他の画面と同じくセッションを落とす。エラー文だけ出すとログイン導線に戻れない。
+      clearSession()
     } else {
       // 422（contract 違反）は issues、409（draft でない / 解析中）は error を返す。
       const body = result.error.body as { issues?: Issue[]; error?: string } | null
@@ -113,16 +117,8 @@ export function RunEditor({
       rewards: s.rewards.map((r) => (r.key === key ? { ...r, ...patch } : r)),
     }))
 
-  /** 行を 1 つ上下に入れ替える（週内の取得順そのもの）。端では何もしない。 */
   const moveHistory = (index: number, delta: number) =>
-    setState((s) => {
-      const target = index + delta
-      if (target < 0 || target >= s.history.length) return s
-      const history = [...s.history]
-      const [row] = history.splice(index, 1)
-      if (row) history.splice(target, 0, row)
-      return { ...s, history }
-    })
+    setState((s) => ({ ...s, history: moveHistoryRow(s.history, index, delta) }))
 
   const actions = (
     <div className="flex gap-3">

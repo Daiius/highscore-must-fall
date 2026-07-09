@@ -8,6 +8,7 @@ import {
   type HistoryRow,
   historyNamePristine,
   historyRowChanged,
+  moveHistoryRow,
   type RewardRow,
   revertHistoryRow,
   revertRewardRow,
@@ -185,6 +186,55 @@ describe('行の差分と「戻す」', () => {
     expect(rewardNamePristine(edited)).toBe(true) // 名前は変えていないのでバッジは有効
     expect(revertRewardRow(edited).points).toBe('250')
     expect(rewardNamePristine(rewardRow({ name: 'BOHEMIA', origin: rOrigin }))).toBe(false)
+  })
+})
+
+describe('moveHistoryRow', () => {
+  const history = [
+    historyRow({ key: 'a', week: '1', name: 'A' }),
+    historyRow({ key: 'b', week: '1', name: 'B' }),
+    historyRow({ key: 'c', week: '2', name: 'C' }),
+  ]
+
+  it('同じ週の中では順序だけ入れ替える', () => {
+    const moved = moveHistoryRow(history, 1, -1)
+    expect(moved.map((r) => [r.key, r.week])).toEqual([
+      ['b', '1'],
+      ['a', '1'],
+      ['c', '2'],
+    ])
+  })
+
+  it('週をまたぐ移動では移動先の週を引き継ぐ（保存時のソートで戻らないように）', () => {
+    // B(週1) を下へ → C(週2) の位置へ入るので週も 2 になる。
+    const down = moveHistoryRow(history, 1, 1)
+    expect(down.map((r) => [r.key, r.week])).toEqual([
+      ['a', '1'],
+      ['c', '2'],
+      ['b', '2'],
+    ])
+    // C(週2) を上へ → B(週1) の位置へ入るので週も 1 になる。
+    const up = moveHistoryRow(history, 2, -1)
+    expect(up.map((r) => [r.key, r.week])).toEqual([
+      ['a', '1'],
+      ['c', '1'],
+      ['b', '1'],
+    ])
+  })
+
+  it('端では元の配列をそのまま返す', () => {
+    expect(moveHistoryRow(history, 0, -1)).toBe(history)
+    expect(moveHistoryRow(history, 2, 1)).toBe(history)
+  })
+
+  it('移動後に buildRecord へ通しても順序が保たれる（週で安定ソートしても崩れない）', () => {
+    const state = editorStateFromRun(makeRun())
+    state.history = moveHistoryRow(history, 1, 1) // B を週2 へ送る
+    expect(buildRecord(makeRun(), state).upgrade_history).toEqual([
+      { week_index: 1, entry_type: 'upgrade', name: 'A' },
+      { week_index: 2, entry_type: 'upgrade', name: 'C' },
+      { week_index: 2, entry_type: 'upgrade', name: 'B' },
+    ])
   })
 })
 

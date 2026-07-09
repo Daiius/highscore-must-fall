@@ -152,6 +152,22 @@ export function rewardNamePristine(row: RewardRow): boolean {
   return row.origin != null && row.name === row.origin.name
 }
 
+/**
+ * 履歴の 1 行を上下に入れ替える（週内の取得順そのもの）。端では元の配列を返す。
+ * 週をまたぐ移動では、その行の週も移動先の週に合わせる。buildRecord が week_index で
+ * 安定ソートする以上、週を変えずに位置だけ動かしても保存時に黙って元へ戻ってしまうため。
+ */
+export function moveHistoryRow(history: HistoryRow[], index: number, delta: number): HistoryRow[] {
+  const target = index + delta
+  const row = history[index]
+  const neighbor = history[target]
+  if (!row || !neighbor) return history
+  const next = [...history]
+  next.splice(index, 1)
+  next.splice(target, 0, row.week === neighbor.week ? row : { ...row, week: neighbor.week })
+  return next
+}
+
 /** 行を保存時点の値へ戻す（key と origin は保つ）。 */
 export function revertHistoryRow(row: HistoryRow): HistoryRow {
   return row.origin ? { ...row, ...stripOrigin(row.origin) } : row
