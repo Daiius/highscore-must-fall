@@ -3,6 +3,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { googleSignIn } from '../api'
+import { attempt } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
 
 export function Home() {
@@ -19,9 +20,8 @@ export function Home() {
 
   async function google() {
     setError(null)
-    try {
-      await googleSignIn(window.location.origin)
-    } catch {
+    const started = await attempt(() => googleSignIn(window.location.origin))
+    if (!started) {
       setError(
         'Google ログインを開始できませんでした（サーバー未設定の可能性）。dev ログインをお使いください。',
       )

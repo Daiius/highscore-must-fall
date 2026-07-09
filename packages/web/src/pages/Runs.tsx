@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { client } from '../api'
 import { AnalysisBadge, type AnalysisStatus, isAnalysisActive } from '../components/AnalysisBadge'
 import { StatusBadge } from '../components/StatusBadge'
+import { callApi } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
 
 interface RunRow {
@@ -32,23 +33,18 @@ export function Runs() {
     async (nextOffset: number, options?: { silent?: boolean }) => {
       if (!options?.silent) setLoading(true)
       setError(null)
-      try {
-        const res = await client.api.runs.$get({
-          query: { limit: String(PAGE_SIZE), offset: String(nextOffset) },
-        })
-        if (res.status === 401) {
-          clearSession()
-          return
-        }
-        if (!res.ok) throw new Error(`status ${res.status}`)
-        const data = (await res.json()) as { runs: RunRow[]; total: number }
-        setRuns(data.runs)
-        setTotal(data.total)
+      const result = await callApi<{ runs: RunRow[]; total: number }>(() =>
+        client.api.runs.$get({ query: { limit: String(PAGE_SIZE), offset: String(nextOffset) } }),
+      )
+      if (!options?.silent) setLoading(false)
+      if (result.ok) {
+        setRuns(result.value.runs)
+        setTotal(result.value.total)
         setOffset(nextOffset)
-      } catch {
+      } else if (result.error.kind === 'unauthorized') {
+        clearSession()
+      } else {
         setError('ラン一覧の取得に失敗しました。時間をおいて再読み込みしてください。')
-      } finally {
-        if (!options?.silent) setLoading(false)
       }
     },
     [clearSession],

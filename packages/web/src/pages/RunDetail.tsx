@@ -1,90 +1,49 @@
 // ラン詳細。コア指標・UPGRADE HISTORY（週ごと）・REWARD LEDGER を表示。
-// draft は「確定する」で confirmed へ遷移（server 側で raw_payload を再検証）。削除も可能。
+// draft は「編集」で中身を手動修正でき（RunEditor）、「確定する」で confirmed へ遷移する
+// （server 側で raw_payload を再検証）。削除も可能。
 
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
-import { API_BASE_URL, client } from '../api'
-import { AnalysisBadge, type AnalysisStatus, isAnalysisActive } from '../components/AnalysisBadge'
+import { useEffect, useState } from 'react'
+import { type NameSuggestion, suggestSimilarNames } from 'shared'
+import { client } from '../api'
+import { AnalysisBadge, isAnalysisActive } from '../components/AnalysisBadge'
+import { CatalogBadges } from '../components/CatalogBadges'
+import { RunEditor } from '../components/RunEditor'
+import { ScreenshotSection } from '../components/ScreenshotSection'
 import { StatusBadge } from '../components/StatusBadge'
+import { SuggestHint } from '../components/SuggestHint'
+import { callApi } from '../lib/api-result'
 import { canUseAutoAnalysis, useAuth } from '../lib/auth'
+import { useVerifiedCatalog } from '../lib/catalog'
+import type { AnalysisJobInfo, Issue, RunDetailData, UpgradeEntry } from '../lib/run-types'
 
-interface Issue {
-  level: 'error' | 'warning'
-  code: string
-  message: string
-  path: (string | number)[]
-}
+const NO_SUGGESTIONS: NameSuggestion[] = []
 
-interface UpgradeEntry {
-  id: string
-  weekIndex: number
-  orderInWeek: number
-  entryType: 'upgrade' | 'reroll'
-  upgradeOrder: number | null
-  flavorText: string | null
-  name: string | null
-  kind: string | null
-  verified: boolean | null
-}
-interface RewardEntry {
-  id: string
-  name: string
-  verified: boolean | null
-  count: number
-  points: number
-}
-interface RunImage {
-  id: string
-  section: 'result' | 'upgrade_history' | 'reward_ledger' | 'other'
-  contentType: string
-  byteSize: number
-  width: number | null
-  height: number | null
-}
-interface AnalysisJobInfo {
-  status: AnalysisStatus
-  attemptCount: number
-  lastError: string | null
-  llmModel: string | null
-  updatedAt: string
-  /** 再解析可否（サーバ判定・正典）。lease 超過の running もここで true になる。 */
-  reanalyzable: boolean
-}
-interface RunDetailData {
-  id: string
-  playedAt: string
-  status: 'draft' | 'confirmed'
-  finalScore: number | null
-  daysSurvived: number | null
-  aliensDefeated: number | null
-  nukesLaunched: number | null
-  apocalypseBonus: number | null
-  rerollCount: number
-  upgradeEntries: UpgradeEntry[]
-  rewardEntries: RewardEntry[]
-  images: RunImage[]
-  analysisJob: AnalysisJobInfo | null
-  llmModel: string | null
-  sourceNote: string | null
-}
-
-const SECTION_LABELS: Record<RunImage['section'], string> = {
-  result: '結果画面',
-  upgrade_history: 'UPGRADE HISTORY',
-  reward_ledger: 'REWARD LEDGER',
-  other: '未分類',
+/**
+ * 表示モードの候補計算。unverified なエントリ（＝誤読がそのまま自動登録された疑いのある名前）にだけ出す。
+ * confirmed でも出す。編集画面でだけ提案すると、気づける機会をそこでしか得られないため。
+ */
+function suggestFor(
+  name: string | null,
+  verified: boolean | null,
+  pool: string[] | undefined,
+): NameSuggestion[] {
+  if (verified !== false || !name || !pool) return NO_SUGGESTIONS
+  return suggestSimilarNames(name, pool)
 }
 
 export function RunDetail() {
   const { id } = useParams({ from: '/runs/$id' })
   const navigate = useNavigate()
   const { user, clearSession } = useAuth()
+  const catalog = useVerifiedCatalog()
   const [run, setRun] = useState<RunDetailData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [confirmIssues, setConfirmIssues] = useState<Issue[]>([])
+  const [issues, setIssues] = useState<Issue[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
 
   // メニューは外側クリックで閉じる（トグルボタン側は stopPropagation で除外）。
@@ -95,29 +54,26 @@ export function RunDetail() {
     return () => document.removeEventListener('click', close)
   }, [menuOpen])
 
-  const fetchRun = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!options?.silent) setLoading(true)
-      try {
-        const res = await client.api.runs[':id'].$get({ param: { id } })
-        if (res.status === 401) {
-          clearSession()
-          return
-        }
-        if (res.ok) {
-          setRun((await res.json()) as RunDetailData)
-        } else {
-          setNotFound(true)
-        }
-      } catch {
-        // 初回の通信失敗は「見つからない」扱いにして永久ローディングを避ける（polling 中は無視）。
-        if (!options?.silent) setNotFound(true)
-      } finally {
-        if (!options?.silent) setLoading(false)
-      }
-    },
-    [id, clearSession],
-  )
+  // メモ化は React Compiler が行う（useCallback を書かない。.claude/rules/react.md）。
+  // 下の useEffect はこの関数の識別子に依存するので、コンパイラが必ずメモ化することが前提。
+  // vite.config.ts の panicThreshold: 'all_errors' がその前提をビルド時に保証する。
+  const fetchRun = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
+    const result = await callApi<RunDetailData>(() =>
+      client.api.runs[':id'].$get({ param: { id } }),
+    )
+    if (!options?.silent) setLoading(false)
+    if (result.ok) {
+      setRun(result.value)
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'status') {
+      setNotFound(true)
+    } else if (!options?.silent) {
+      // 初回の通信失敗は「見つからない」扱いにして永久ローディングを避ける（polling 中は無視）。
+      setNotFound(true)
+    }
+  }
 
   useEffect(() => {
     void fetchRun()
@@ -133,71 +89,74 @@ export function RunDetail() {
   async function reanalyze() {
     setBusy(true)
     setActionError(null)
-    try {
-      const res = await client.api.runs[':id'].reanalyze.$post({ param: { id } })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      if (res.ok) {
-        await fetchRun({ silent: true })
-      } else {
-        const data = (await res.json()) as { error?: string }
-        setActionError(data.error ?? '再解析を開始できませんでした')
-      }
-    } catch {
+    const result = await callApi<{ ok: boolean }>(() =>
+      client.api.runs[':id'].reanalyze.$post({ param: { id } }),
+    )
+    if (result.ok) {
+      await fetchRun({ silent: true })
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'status') {
+      const body = result.error.body as { error?: string } | null
+      setActionError(body?.error ?? '再解析を開始できませんでした')
+    } else {
       setActionError('リクエストに失敗しました')
-    } finally {
-      setBusy(false)
     }
+    setBusy(false)
   }
 
   async function remove() {
     if (!confirm('このランを削除しますか？（元に戻せません）')) return
-    const res = await client.api.runs[':id'].$delete({ param: { id } })
-    if (res.ok) void navigate({ to: '/runs' })
+    // 204（本文なし）。callApi は json() 失敗を null に畳むので ok 判定だけ見る。
+    const result = await callApi<null>(() => client.api.runs[':id'].$delete({ param: { id } }))
+    if (result.ok) void navigate({ to: '/runs' })
   }
 
   async function changeStatus(status: 'draft' | 'confirmed') {
     setBusy(true)
     setActionError(null)
-    setConfirmIssues([])
-    try {
-      const res = await client.api.runs[':id'].$patch({ param: { id }, json: { status } })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      if (res.status === 409) {
-        // 解析中に確定を試みた（通常ボタンは隠れているが、解析開始と競合した場合の保険）。
-        setActionError('解析中は確定できません。解析の完了後にもう一度お試しください。')
-        void fetchRun()
-        return
-      }
-      const data = (await res.json()) as { ok?: boolean; issues?: Issue[] }
-      if (res.ok && data.ok) {
-        setRun((prev) => (prev ? { ...prev, status } : prev))
-        // 確定は成功しても warning は残せる（要確認として表示し続ける）。
-        setConfirmIssues(data.issues ?? [])
-      } else {
-        setActionError(
-          status === 'confirmed'
-            ? '確定できませんでした。検証エラーを確認してください。'
-            : '下書きに戻せませんでした。',
-        )
-        setConfirmIssues(data.issues ?? [])
-      }
-    } catch {
+    setIssues([])
+    const result = await callApi<{ ok: boolean; issues?: Issue[] }>(() =>
+      client.api.runs[':id'].$patch({ param: { id }, json: { status } }),
+    )
+    setBusy(false)
+    if (result.ok) {
+      setRun((prev) => (prev ? { ...prev, status } : prev))
+      // 確定は成功しても warning は残せる（要確認として表示し続ける）。
+      setIssues(result.value.issues ?? [])
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'network') {
       setActionError('リクエストに失敗しました')
-    } finally {
-      setBusy(false)
+    } else if (result.error.status === 409) {
+      // 解析中に確定を試みた（通常ボタンは隠れているが、解析開始と競合した場合の保険）。
+      setActionError('解析中は確定できません。解析の完了後にもう一度お試しください。')
+      void fetchRun()
+    } else {
+      const body = result.error.body as { issues?: Issue[] } | null
+      setActionError(
+        status === 'confirmed'
+          ? '確定できませんでした。検証エラーを確認してください。'
+          : '下書きに戻せませんでした。',
+      )
+      setIssues(body?.issues ?? [])
     }
+  }
+
+  /** 手動修正の保存後。子エントリ・カタログが変わるので取り直す。warning は残して表示する。 */
+  async function handleSaved(savedIssues: Issue[]) {
+    setEditing(false)
+    setActionError(null)
+    setIssues(savedIssues)
+    await fetchRun({ silent: true })
   }
 
   if (loading) return <p className="text-slate-400">読み込み中…</p>
   if (notFound || !run) return <p className="text-slate-400">ランが見つかりません。</p>
 
   const weeks = groupByWeek(run.upgradeEntries)
+  // 解析中（queued/running）は中身が未確定なので編集も確定もさせない（backend でも 409 で拒否）。
+  const mutable = run.status === 'draft' && !isAnalysisActive(run.analysisJob?.status)
 
   return (
     <div className="space-y-6">
@@ -211,30 +170,45 @@ export function RunDetail() {
           <p className="text-slate-400 text-sm">{formatDate(run.playedAt)}</p>
         </div>
         <div className="relative flex gap-3">
-          {/* 解析中（queued/running）は中身が未確定なので確定ボタンを出さない（backend でも 409 で拒否）。 */}
-          {run.status === 'draft' && !isAnalysisActive(run.analysisJob?.status) && (
+          {/* 編集中は誤操作（確定・削除）を防ぐため、他の操作を出さない。 */}
+          {mutable && !editing && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setIssues([])
+                  setEditing(true)
+                }}
+                disabled={busy}
+                className="rounded border border-slate-600 px-3 py-1.5 font-medium text-slate-200 text-sm hover:bg-slate-700 disabled:opacity-50"
+              >
+                編集
+              </button>
+              <button
+                type="button"
+                onClick={() => void changeStatus('confirmed')}
+                disabled={busy}
+                className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
+              >
+                確定する
+              </button>
+            </>
+          )}
+          {!editing && (
             <button
               type="button"
-              onClick={() => void changeStatus('confirmed')}
-              disabled={busy}
-              className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
+              aria-label="その他の操作"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen((o) => !o)
+              }}
+              className="rounded border border-slate-600 px-2.5 py-1.5 text-slate-300 text-sm hover:bg-slate-700"
             >
-              確定する
+              ⋮
             </button>
           )}
-          <button
-            type="button"
-            aria-label="その他の操作"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuOpen((o) => !o)
-            }}
-            className="rounded border border-slate-600 px-2.5 py-1.5 text-slate-300 text-sm hover:bg-slate-700"
-          >
-            ⋮
-          </button>
           {menuOpen && (
             <div
               role="menu"
@@ -280,11 +254,11 @@ export function RunDetail() {
           onReanalyze={() => void reanalyze()}
         />
       )}
-      {confirmIssues.length > 0 && (
+      {issues.length > 0 && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-          <h2 className="mb-2 font-semibold text-slate-200 text-sm">確定時の検証結果</h2>
+          <h2 className="mb-2 font-semibold text-slate-200 text-sm">検証結果</h2>
           <ul className="space-y-1">
-            {confirmIssues.map((issue, i) => (
+            {issues.map((issue, i) => (
               <li key={`${issue.code}-${i}`} className="text-slate-300 text-sm">
                 <span className={issue.level === 'error' ? 'text-red-400' : 'text-amber-300'}>
                   [{issue.level}]
@@ -297,102 +271,96 @@ export function RunDetail() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label="生存日数" value={run.daysSurvived} />
-        <Stat label="撃破エイリアン" value={run.aliensDefeated} />
-        <Stat label="発射核" value={run.nukesLaunched} />
-        <Stat label="ボーナス" value={run.apocalypseBonus} />
-        <Stat label="リロール" value={run.rerollCount} />
-      </div>
-
-      <section className="space-y-3">
-        <h2 className="font-semibold text-slate-200">UPGRADE HISTORY</h2>
-        {weeks.map(([week, entries]) => (
-          <div key={week} className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-            <h3 className="mb-2 font-medium text-slate-400 text-sm">WEEK {week}</h3>
-            <ol className="space-y-1">
-              {entries.map((e) => (
-                <li key={e.id} className="flex items-center gap-2 text-sm">
-                  <span className="w-6 text-right font-mono text-slate-500">{e.orderInWeek}</span>
-                  {e.entryType === 'reroll' ? (
-                    <span className="text-slate-500 italic">↻ {e.flavorText ?? 'リロール'}</span>
-                  ) : (
-                    <span className="text-slate-200">
-                      {e.name}
-                      {e.kind === 'opportunity_upgrade' && (
-                        <span className="ml-2 rounded bg-cyan-500/20 px-1.5 py-0.5 text-cyan-300 text-xs">
-                          OU
-                        </span>
-                      )}
-                      {e.verified === false && (
-                        <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-300 text-xs">
-                          未検証
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </div>
-        ))}
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="font-semibold text-slate-200">REWARD LEDGER</h2>
-        <div className="overflow-x-auto rounded-lg border border-slate-700">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-800 text-slate-400">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">名前</th>
-                <th className="px-4 py-2 text-right font-medium">回数</th>
-                <th className="px-4 py-2 text-right font-medium">ポイント</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {run.rewardEntries.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-4 py-2 text-slate-200">
-                    {r.name}
-                    {r.verified === false && (
-                      <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-300 text-xs">
-                        未検証
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">{r.count}</td>
-                  <td className="px-4 py-2 text-right font-mono">{r.points.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {editing ? (
+        // 編集中はスクショを右に固定して、原本を見ながら 1 行ずつ突き合わせられるようにする。
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <RunEditor
+            run={run}
+            catalog={catalog}
+            onCancel={() => setEditing(false)}
+            onSaved={(saved) => void handleSaved(saved)}
+          />
+          <aside className="xl:sticky xl:top-4 xl:self-start">
+            <ScreenshotSection run={run} column />
+          </aside>
         </div>
-      </section>
-
-      {run.images.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="font-semibold text-slate-200">スクリーンショット</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {run.images.map((image) => (
-              <figure
-                key={image.id}
-                className="overflow-hidden rounded-lg border border-slate-700 bg-slate-800/50"
-              >
-                <img
-                  src={`${API_BASE_URL}/api/runs/${run.id}/images/${image.id}`}
-                  alt={SECTION_LABELS[image.section]}
-                  loading="lazy"
-                  width={image.width ?? undefined}
-                  height={image.height ?? undefined}
-                  className="h-auto w-full"
-                />
-                <figcaption className="px-3 py-1.5 text-slate-400 text-xs">
-                  {SECTION_LABELS[image.section]}
-                </figcaption>
-              </figure>
-            ))}
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Stat label="生存日数" value={run.daysSurvived} />
+            <Stat label="撃破エイリアン" value={run.aliensDefeated} />
+            <Stat label="発射核" value={run.nukesLaunched} />
+            <Stat label="ボーナス" value={run.apocalypseBonus} />
+            <Stat label="リロール" value={run.rerollCount} />
           </div>
-        </section>
+
+          <section className="space-y-3">
+            <h2 className="font-semibold text-slate-200">UPGRADE HISTORY</h2>
+            {weeks.map(([week, entries]) => (
+              <div key={week} className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
+                <h3 className="mb-2 font-medium text-slate-400 text-sm">WEEK {week}</h3>
+                <ol className="space-y-1">
+                  {entries.map((e) => (
+                    <li key={e.id} className="space-y-0.5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 text-right font-mono text-slate-500">
+                          {e.orderInWeek}
+                        </span>
+                        {e.entryType === 'reroll' ? (
+                          <span className="text-slate-500 italic">
+                            ↻ {e.flavorText ?? 'リロール'}
+                          </span>
+                        ) : (
+                          <span className="text-slate-200">
+                            {e.name}
+                            <CatalogBadges kind={e.kind} verified={e.verified} />
+                          </span>
+                        )}
+                      </div>
+                      <SuggestHint
+                        suggestions={suggestFor(e.name, e.verified, catalog?.upgrades)}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-semibold text-slate-200">REWARD LEDGER</h2>
+            <div className="overflow-x-auto rounded-lg border border-slate-700">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-800 text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">名前</th>
+                    <th className="px-4 py-2 text-right font-medium">回数</th>
+                    <th className="px-4 py-2 text-right font-medium">ポイント</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {run.rewardEntries.map((r) => (
+                    <tr key={r.id}>
+                      <td className="px-4 py-2 text-slate-200">
+                        {r.name}
+                        <CatalogBadges verified={r.verified} />
+                        <SuggestHint
+                          suggestions={suggestFor(r.name, r.verified, catalog?.rewards)}
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono">{r.count}</td>
+                      <td className="px-4 py-2 text-right font-mono">
+                        {r.points.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <ScreenshotSection run={run} />
+        </>
       )}
 
       {(run.llmModel || run.sourceNote) && (

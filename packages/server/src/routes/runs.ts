@@ -7,18 +7,19 @@
 //     ※ 値欠落を含む本当の部分ドラフト（緩い draft スキーマ）は後続の課題（DB は nullable 準備済み）。
 //   - GET    /api/runs      : owner の run 一覧（コア指標のみ・新しい順・ページング・総件数付き）。
 //   - GET    /api/runs/:id  : owner の run 詳細（子エントリ + カタログ表示名 + payload + 画像メタ）。
+//   - PUT    /api/runs/:id/record : draft の中身を手動修正で丸ごと置き換える（読み取りミスの訂正）。
 //   - DELETE /api/runs/:id  : owner の run 削除（子テーブルは複合 FK cascade）。
 
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
-import { StoredDatetimeSchema } from 'shared'
+import { StoredDatetimeSchema, validateRunRecord } from 'shared'
 import { z } from 'zod'
 import { requeueAnalysis } from '../lib/analysis-jobs'
 import { blobStore } from '../lib/blob-store'
 import { type AppEnv, limitIngestBody, requireAdmin, requireUser } from '../lib/context'
-import { ingestSubmission } from '../lib/ingest'
+import { ingestSubmission, toCanonicalRunRecord } from '../lib/ingest'
 import { deleteRun, getRunDetail, getRunImage, listRuns } from '../lib/run-queries'
-import { saveRun, updateRunStatus } from '../lib/runs'
+import { saveRun, updateRunRecord, updateRunStatus } from '../lib/runs'
 
 /** run_payload.source_note は MySQL TEXT（最大 65535 バイト）。UTF-8 バイト長で制限する。 */
 const TEXT_MAX_BYTES = 65535
@@ -45,6 +46,14 @@ const listQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(['draft', 'confirmed']).optional(),
 })
+
+/**
+ * 手動修正の本文。record は素の値のまま受け、shared の contract（toCanonicalRunRecord →
+ * validateRunRecord）で検証する。ここで形を二重定義すると投入ルートと検証が枝分かれするため、
+ * ルート層では「record というキーで何か来る」ことだけを保証する。
+ * order_in_week は送らせない（週内連番はアダプタが配列順から採番する）。
+ */
+const recordBody = z.object({ record: z.unknown() })
 
 export const runsRoute = new Hono<AppEnv>()
   .post('/', limitIngestBody, requireUser, zValidator('json', createBody), async (c) => {
@@ -110,6 +119,29 @@ export const runsRoute = new Hono<AppEnv>()
       return c.json({ ok: true, status: result.status, issues: result.issues })
     },
   )
+  // 手動修正（draft の中身を丸ごと置き換える。prd/04 §4）。
+  // 投入ルートと同じ品質ゲート（shared の Zod + 整合チェック）を通し、error があれば 422 で書き込まない。
+  // warning（apocalypse_bonus 不一致など）は保存しつつ返す＝直しながら保存できる。
+  .put('/:id/record', limitIngestBody, requireUser, zValidator('json', recordBody), async (c) => {
+    const owner = c.get('user')
+    if (!owner) return c.json({ error: 'authentication required' }, 401)
+
+    const result = validateRunRecord(toCanonicalRunRecord(c.req.valid('json').record))
+    if (!result.ok || !result.record) return c.json({ ok: false, issues: result.issues }, 422)
+
+    const updated = await updateRunRecord(owner.id, c.req.param('id'), result.record)
+    if (updated.kind === 'not_found') return c.json({ ok: false, error: 'not found' }, 404)
+    if (updated.kind === 'run_not_draft') {
+      return c.json(
+        { ok: false, error: '確定済みの run は下書きに戻してから編集してください' },
+        409,
+      )
+    }
+    if (updated.kind === 'analysis_in_progress') {
+      return c.json({ ok: false, error: '解析中は編集できません' }, 409)
+    }
+    return c.json({ ok: true, issues: result.issues })
+  })
   // 削除（owner の run のみ・子テーブルは複合 FK cascade。画像実体も削除）。
   .delete('/:id', requireUser, async (c) => {
     const owner = c.get('user')

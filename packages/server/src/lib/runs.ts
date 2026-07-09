@@ -274,6 +274,84 @@ export async function saveRun(input: SaveRunInput): Promise<SaveRunResult> {
   return { runId, status }
 }
 
+export type UpdateRunRecordResult =
+  | { kind: 'not_found' }
+  | { kind: 'run_not_draft' }
+  | { kind: 'analysis_in_progress' }
+  | { kind: 'updated' }
+
+/**
+ * draft の中身を検証済み RunRecord で丸ごと置き換える（手動修正。prd/04 §4）。
+ * 子エントリは削除して writeRunChildren で書き直す（completeJob の再反映と同じ形）。
+ *
+ *   - draft のみ。confirmed は「下書きに戻す」を経由させる（確定済みの内容を黙って変えない）。
+ *   - 解析待ち/解析中は拒否する。worker の complete が同じ行を上書きするため（updateRunStatus と同様、
+ *     UI でもボタンを止めるが backend で確実に弾く）。
+ *   - run.played_at は触らない。投入日時の変更は投入時のみの導線であり、
+ *     ここで raw_payload の played_at からコピーすると POST 時の明示上書きを黙って捨てるため。
+ */
+export async function updateRunRecord(
+  ownerId: string,
+  runId: string,
+  record: RunRecord,
+): Promise<UpdateRunRecordResult> {
+  return withDeadlockRetry(() =>
+    db.transaction(async (tx): Promise<UpdateRunRecordResult> => {
+      // run → job の順で行ロックする（completeJob / updateRunStatus と同順でデッドロック回避）。
+      const rows = await tx
+        .select({ status: run.status })
+        .from(run)
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+        .limit(1)
+        .for('update')
+      const current = rows[0]
+      if (!current) return { kind: 'not_found' }
+      if (current.status !== 'draft') return { kind: 'run_not_draft' }
+
+      const jobRows = await tx
+        .select({ status: analysisJob.status })
+        .from(analysisJob)
+        .where(and(eq(analysisJob.runId, runId), eq(analysisJob.ownerId, ownerId)))
+        .limit(1)
+        .for('update')
+      const jobStatus = jobRows[0]?.status
+      if (jobStatus === 'queued' || jobStatus === 'running') {
+        return { kind: 'analysis_in_progress' }
+      }
+
+      await tx
+        .update(run)
+        .set({
+          schemaVersion: record.schema_version,
+          game: record.game,
+          daysSurvived: record.result.days_survived,
+          finalScore: record.result.final_score,
+          aliensDefeated: record.result.aliens_defeated,
+          nukesLaunched: record.result.nukes_launched,
+          apocalypseBonus: record.result.apocalypse_bonus,
+          rerollCount: countRerolls(record),
+        })
+        .where(and(eq(run.id, runId), eq(run.ownerId, ownerId)))
+
+      // 行が無い run（想定外）でも復旧できるよう upsert。llm_model / source_note は来歴なので温存する。
+      await tx
+        .insert(runPayload)
+        .values({ runId, ownerId, rawPayload: record })
+        .onDuplicateKeyUpdate({ set: { rawPayload: record } })
+
+      await tx
+        .delete(upgradeEntry)
+        .where(and(eq(upgradeEntry.runId, runId), eq(upgradeEntry.ownerId, ownerId)))
+      await tx
+        .delete(rewardEntry)
+        .where(and(eq(rewardEntry.runId, runId), eq(rewardEntry.ownerId, ownerId)))
+      await writeRunChildren(tx, { record, runId, ownerId })
+
+      return { kind: 'updated' }
+    }),
+  )
+}
+
 export type UpdateRunStatusResult =
   | { kind: 'not_found' }
   | { kind: 'invalid'; issues: ValidationIssue[] }

@@ -9,6 +9,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../api'
+import { callApi } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
 
 const MAX_IMAGES = 5
@@ -120,29 +121,26 @@ export function ScreenshotUpload() {
     }
     setBusy(true)
     setError(null)
-    try {
-      const form = new FormData()
-      for (const it of items) form.append('images', it.file)
-      // 配列フィールドつき multipart は素の fetch で送る（cookie セッションを同送）。
-      const res = await fetch(`${API_BASE_URL}/api/screenshots`, {
+    const form = new FormData()
+    for (const it of items) form.append('images', it.file)
+    // 配列フィールドつき multipart は素の fetch で送る（cookie セッションを同送）。
+    const result = await callApi<{ ok: boolean; runId: string }>(() =>
+      fetch(`${API_BASE_URL}/api/screenshots`, {
         method: 'POST',
         credentials: 'include',
         body: form,
-      })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      const data = (await res.json()) as { ok: boolean; runId?: string; error?: string }
-      if (res.ok && data.runId) {
-        void navigate({ to: '/runs/$id', params: { id: data.runId } })
-      } else {
-        setError(data.error ?? `アップロードに失敗しました (${res.status})`)
-      }
-    } catch {
+      }),
+    )
+    setBusy(false)
+    if (result.ok) {
+      void navigate({ to: '/runs/$id', params: { id: result.value.runId } })
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'network') {
       setError('アップロードリクエストに失敗しました')
-    } finally {
-      setBusy(false)
+    } else {
+      const body = result.error.body as { error?: string } | null
+      setError(body?.error ?? `アップロードに失敗しました (${result.error.status})`)
     }
   }
 

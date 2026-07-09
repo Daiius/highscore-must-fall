@@ -59,6 +59,7 @@ pnpm db:seed      # 初期カタログ等のシード投入
 ## コーディング規約（[.claude/rules/](./.claude/rules/)）
 
 - [typescript.md](./.claude/rules/typescript.md) — TS / 命名 / Biome（Tailwind クラス整列は `useSortedClasses`）
+- [react.md](./.claude/rules/react.md) — React Compiler にメモ化を任せる（`useMemo`/`useCallback` を書かない）／コンポーネントに `try/catch` を書かず `Result` で返す
 - [schema-and-contract.md](./.claude/rules/schema-and-contract.md) — `shared` の Zod を単一真実に、JSON Schema 導出、`schema_version` 規約
 - [database.md](./.claude/rules/database.md) — Drizzle / `owner_id` 必須 / インデックス方針 / `raw_payload` 分離
 - [commit.md](./.claude/rules/commit.md) — コミット / PR 規約（PR は [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) / `/create-draft-pr` スキル）
