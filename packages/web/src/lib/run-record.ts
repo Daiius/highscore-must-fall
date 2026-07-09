@@ -26,7 +26,8 @@ export interface HistoryOrigin {
 }
 
 export interface HistoryRow {
-  key: number
+  /** React の行キー。既存行はエントリ id、追加行は生成した UUID。 */
+  key: string
   week: string
   type: 'upgrade' | 'reroll'
   /** type=upgrade のときの名前。type を切り替えても失わないよう flavor と別に持つ。 */
@@ -44,11 +45,16 @@ export interface RewardOrigin {
 }
 
 export interface RewardRow {
-  key: number
+  key: string
   name: string
   count: string
   points: string
   origin: RewardOrigin | null
+}
+
+/** 追加行の React キー。既存行はエントリ id をそのまま使うので、ここでしか生成しない。 */
+export function newRowKey(): string {
+  return crypto.randomUUID()
 }
 
 export const RESULT_FIELDS = [
@@ -80,8 +86,8 @@ export function sumPoints(rewards: RewardRow[]): number {
 
 const numberToInput = (value: number | null): string => (value == null ? '' : String(value))
 
-/** run 詳細（子エントリ）から編集フォームの初期状態を作る。 */
-export function editorStateFromRun(run: RunDetailData, nextKey: () => number): EditorState {
+/** run 詳細（子エントリ）から編集フォームの初期状態を作る。行キーはエントリ id をそのまま使う。 */
+export function editorStateFromRun(run: RunDetailData): EditorState {
   return {
     result: {
       days_survived: numberToInput(run.daysSurvived),
@@ -99,7 +105,7 @@ export function editorStateFromRun(run: RunDetailData, nextKey: () => number): E
         kind: e.kind,
         verified: e.verified,
       }
-      return { key: nextKey(), ...stripOrigin(origin), origin }
+      return { key: e.id, ...stripOrigin(origin), origin }
     }),
     rewards: run.rewardEntries.map((r) => {
       const origin: RewardOrigin = {
@@ -109,7 +115,7 @@ export function editorStateFromRun(run: RunDetailData, nextKey: () => number): E
         verified: r.verified,
       }
       const { verified: _verified, ...values } = origin
-      return { key: nextKey(), ...values, origin }
+      return { key: r.id, ...values, origin }
     }),
   }
 }

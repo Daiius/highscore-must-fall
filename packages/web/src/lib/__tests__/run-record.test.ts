@@ -64,14 +64,8 @@ function makeRun(overrides: Partial<RunDetailData> = {}): RunDetailData {
   }
 }
 
-/** テスト用のキー採番（本体では useRef のカウンタ）。 */
-function keyer() {
-  let n = 0
-  return () => ++n
-}
-
 const historyRow = (over: Partial<HistoryRow> = {}): HistoryRow => ({
-  key: 1,
+  key: 'k1',
   week: '1',
   type: 'upgrade',
   name: 'ARC FLAIL',
@@ -81,7 +75,7 @@ const historyRow = (over: Partial<HistoryRow> = {}): HistoryRow => ({
 })
 
 const rewardRow = (over: Partial<RewardRow> = {}): RewardRow => ({
-  key: 1,
+  key: 'k1',
   name: 'BOHEMIAN',
   count: '1',
   points: '250',
@@ -103,16 +97,19 @@ describe('toNumber', () => {
 describe('sumPoints', () => {
   it('空欄・非数は 0 として合計する（表示用）', () => {
     expect(sumPoints([rewardRow({ points: '' })])).toBe(0)
-    expect(sumPoints([rewardRow({ points: '250' }), rewardRow({ key: 2, points: '30' })])).toBe(280)
+    expect(sumPoints([rewardRow({ points: '250' }), rewardRow({ key: 'r2', points: '30' })])).toBe(
+      280,
+    )
   })
 })
 
 describe('editorStateFromRun', () => {
   it('子エントリからフォーム初期状態と origin を作る', () => {
-    const state = editorStateFromRun(makeRun(), keyer())
+    const state = editorStateFromRun(makeRun())
     expect(state.result.final_score).toBe('143161')
+    // 行キーはエントリ id をそのまま使う（採番カウンタを持たない）。
     expect(state.history[0]).toEqual({
-      key: 1,
+      key: 'u1',
       week: '1',
       type: 'upgrade',
       name: 'RATIONNED WARHEADS',
@@ -128,7 +125,7 @@ describe('editorStateFromRun', () => {
     })
     expect(state.history[1]?.flavor).toBe('DIGITIZE CONSCIOUSNESS')
     expect(state.rewards[0]).toEqual({
-      key: 3,
+      key: 'r1',
       name: 'BOHEMIAN',
       count: '1',
       points: '1208',
@@ -137,7 +134,7 @@ describe('editorStateFromRun', () => {
   })
 
   it('null のコア指標は空欄にする（部分 draft）', () => {
-    const state = editorStateFromRun(makeRun({ finalScore: null }), keyer())
+    const state = editorStateFromRun(makeRun({ finalScore: null }))
     expect(state.result.final_score).toBe('')
   })
 })
@@ -195,19 +192,19 @@ describe('buildRecord', () => {
   const run = makeRun()
 
   it('order_in_week は送らない（server 側アダプタが配列順から採番する）', () => {
-    const record = buildRecord(run, editorStateFromRun(run, keyer()))
+    const record = buildRecord(run, editorStateFromRun(run))
     for (const entry of record.upgrade_history as Record<string, unknown>[]) {
       expect(entry).not.toHaveProperty('order_in_week')
     }
   })
 
   it('upgrade_history を week_index 昇順へ安定ソートする（週内の順序は保つ）', () => {
-    const state = editorStateFromRun(run, keyer())
+    const state = editorStateFromRun(run)
     state.history = [
-      historyRow({ key: 1, week: '2', name: 'B1' }),
-      historyRow({ key: 2, week: '1', name: 'A1' }),
-      historyRow({ key: 3, week: '2', name: 'B2' }),
-      historyRow({ key: 4, week: '1', name: 'A2' }),
+      historyRow({ key: 'h1', week: '2', name: 'B1' }),
+      historyRow({ key: 'h2', week: '1', name: 'A1' }),
+      historyRow({ key: 'h3', week: '2', name: 'B2' }),
+      historyRow({ key: 'h4', week: '1', name: 'A2' }),
     ]
     expect(buildRecord(run, state).upgrade_history).toEqual([
       { week_index: 1, entry_type: 'upgrade', name: 'A1' },
@@ -218,10 +215,10 @@ describe('buildRecord', () => {
   })
 
   it('reroll の flavor は空白のみなら省き、そうでなければ verbatim で送る', () => {
-    const state = editorStateFromRun(run, keyer())
+    const state = editorStateFromRun(run)
     state.history = [
-      historyRow({ key: 1, type: 'reroll', flavor: '   ' }),
-      historyRow({ key: 2, type: 'reroll', flavor: '  WELCOMING CEREMONY ' }),
+      historyRow({ key: 'h1', type: 'reroll', flavor: '   ' }),
+      historyRow({ key: 'h2', type: 'reroll', flavor: '  WELCOMING CEREMONY ' }),
     ]
     expect(buildRecord(run, state).upgrade_history).toEqual([
       { week_index: 1, entry_type: 'reroll' },
@@ -230,7 +227,7 @@ describe('buildRecord', () => {
   })
 
   it('未入力の数値は undefined のまま（0 に化けさせない）', () => {
-    const state = editorStateFromRun(run, keyer())
+    const state = editorStateFromRun(run)
     state.result.final_score = ''
     state.rewards = [rewardRow({ name: 'A', count: '', points: '' })]
     const record = buildRecord(run, state)
@@ -256,7 +253,7 @@ describe('buildRecord', () => {
         reward_ledger: [],
       },
     })
-    const record = buildRecord(withPayload, editorStateFromRun(withPayload, keyer()))
+    const record = buildRecord(withPayload, editorStateFromRun(withPayload))
     expect(record.schema_version).toBe('0.1.0')
     expect(record.played_at).toBe('2026-01-01T00:00:00.000Z')
     expect((record.result as Record<string, unknown>).future_metric).toBe(42)
@@ -266,7 +263,7 @@ describe('buildRecord', () => {
   })
 
   it('名前は前後の空白を落として送る（正規化は contract 側でも走る）', () => {
-    const state = editorStateFromRun(run, keyer())
+    const state = editorStateFromRun(run)
     state.history = [historyRow({ name: '  ARC FLAIL  ' })]
     state.rewards = [rewardRow({ name: ' BOHEMIAN ' })]
     const record = buildRecord(run, state)

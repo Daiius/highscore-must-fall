@@ -3,20 +3,40 @@
 // （server 側で raw_payload を再検証）。削除も可能。
 
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { type NameSuggestion, suggestSimilarNames } from 'shared'
 import { client } from '../api'
 import { AnalysisBadge, isAnalysisActive } from '../components/AnalysisBadge'
 import { CatalogBadges } from '../components/CatalogBadges'
 import { RunEditor } from '../components/RunEditor'
 import { ScreenshotSection } from '../components/ScreenshotSection'
 import { StatusBadge } from '../components/StatusBadge'
+import { SuggestHint } from '../components/SuggestHint'
+import { callApi } from '../lib/api-result'
 import { canUseAutoAnalysis, useAuth } from '../lib/auth'
+import { useVerifiedCatalog } from '../lib/catalog'
 import type { AnalysisJobInfo, Issue, RunDetailData, UpgradeEntry } from '../lib/run-types'
+
+const NO_SUGGESTIONS: NameSuggestion[] = []
+
+/**
+ * 表示モードの候補計算。unverified なエントリ（＝誤読がそのまま自動登録された疑いのある名前）にだけ出す。
+ * confirmed でも出す。編集画面でだけ提案すると、気づける機会をそこでしか得られないため。
+ */
+function suggestFor(
+  name: string | null,
+  verified: boolean | null,
+  pool: string[] | undefined,
+): NameSuggestion[] {
+  if (verified !== false || !name || !pool) return NO_SUGGESTIONS
+  return suggestSimilarNames(name, pool)
+}
 
 export function RunDetail() {
   const { id } = useParams({ from: '/runs/$id' })
   const navigate = useNavigate()
   const { user, clearSession } = useAuth()
+  const catalog = useVerifiedCatalog()
   const [run, setRun] = useState<RunDetailData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -34,29 +54,26 @@ export function RunDetail() {
     return () => document.removeEventListener('click', close)
   }, [menuOpen])
 
-  const fetchRun = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!options?.silent) setLoading(true)
-      try {
-        const res = await client.api.runs[':id'].$get({ param: { id } })
-        if (res.status === 401) {
-          clearSession()
-          return
-        }
-        if (res.ok) {
-          setRun((await res.json()) as RunDetailData)
-        } else {
-          setNotFound(true)
-        }
-      } catch {
-        // 初回の通信失敗は「見つからない」扱いにして永久ローディングを避ける（polling 中は無視）。
-        if (!options?.silent) setNotFound(true)
-      } finally {
-        if (!options?.silent) setLoading(false)
-      }
-    },
-    [id, clearSession],
-  )
+  // メモ化は React Compiler が行う（useCallback を書かない。.claude/rules/react.md）。
+  // 下の useEffect はこの関数の識別子に依存するので、コンパイラが必ずメモ化することが前提。
+  // vite.config.ts の panicThreshold: 'all_errors' がその前提をビルド時に保証する。
+  const fetchRun = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
+    const result = await callApi<RunDetailData>(() =>
+      client.api.runs[':id'].$get({ param: { id } }),
+    )
+    if (!options?.silent) setLoading(false)
+    if (result.ok) {
+      setRun(result.value)
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'status') {
+      setNotFound(true)
+    } else if (!options?.silent) {
+      // 初回の通信失敗は「見つからない」扱いにして永久ローディングを避ける（polling 中は無視）。
+      setNotFound(true)
+    }
+  }
 
   useEffect(() => {
     void fetchRun()
@@ -72,64 +89,57 @@ export function RunDetail() {
   async function reanalyze() {
     setBusy(true)
     setActionError(null)
-    try {
-      const res = await client.api.runs[':id'].reanalyze.$post({ param: { id } })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      if (res.ok) {
-        await fetchRun({ silent: true })
-      } else {
-        const data = (await res.json()) as { error?: string }
-        setActionError(data.error ?? '再解析を開始できませんでした')
-      }
-    } catch {
+    const result = await callApi<{ ok: boolean }>(() =>
+      client.api.runs[':id'].reanalyze.$post({ param: { id } }),
+    )
+    if (result.ok) {
+      await fetchRun({ silent: true })
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'status') {
+      const body = result.error.body as { error?: string } | null
+      setActionError(body?.error ?? '再解析を開始できませんでした')
+    } else {
       setActionError('リクエストに失敗しました')
-    } finally {
-      setBusy(false)
     }
+    setBusy(false)
   }
 
   async function remove() {
     if (!confirm('このランを削除しますか？（元に戻せません）')) return
-    const res = await client.api.runs[':id'].$delete({ param: { id } })
-    if (res.ok) void navigate({ to: '/runs' })
+    // 204（本文なし）。callApi は json() 失敗を null に畳むので ok 判定だけ見る。
+    const result = await callApi<null>(() => client.api.runs[':id'].$delete({ param: { id } }))
+    if (result.ok) void navigate({ to: '/runs' })
   }
 
   async function changeStatus(status: 'draft' | 'confirmed') {
     setBusy(true)
     setActionError(null)
     setIssues([])
-    try {
-      const res = await client.api.runs[':id'].$patch({ param: { id }, json: { status } })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      if (res.status === 409) {
-        // 解析中に確定を試みた（通常ボタンは隠れているが、解析開始と競合した場合の保険）。
-        setActionError('解析中は確定できません。解析の完了後にもう一度お試しください。')
-        void fetchRun()
-        return
-      }
-      const data = (await res.json()) as { ok?: boolean; issues?: Issue[] }
-      if (res.ok && data.ok) {
-        setRun((prev) => (prev ? { ...prev, status } : prev))
-        // 確定は成功しても warning は残せる（要確認として表示し続ける）。
-        setIssues(data.issues ?? [])
-      } else {
-        setActionError(
-          status === 'confirmed'
-            ? '確定できませんでした。検証エラーを確認してください。'
-            : '下書きに戻せませんでした。',
-        )
-        setIssues(data.issues ?? [])
-      }
-    } catch {
+    const result = await callApi<{ ok: boolean; issues?: Issue[] }>(() =>
+      client.api.runs[':id'].$patch({ param: { id }, json: { status } }),
+    )
+    setBusy(false)
+    if (result.ok) {
+      setRun((prev) => (prev ? { ...prev, status } : prev))
+      // 確定は成功しても warning は残せる（要確認として表示し続ける）。
+      setIssues(result.value.issues ?? [])
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'network') {
       setActionError('リクエストに失敗しました')
-    } finally {
-      setBusy(false)
+    } else if (result.error.status === 409) {
+      // 解析中に確定を試みた（通常ボタンは隠れているが、解析開始と競合した場合の保険）。
+      setActionError('解析中は確定できません。解析の完了後にもう一度お試しください。')
+      void fetchRun()
+    } else {
+      const body = result.error.body as { issues?: Issue[] } | null
+      setActionError(
+        status === 'confirmed'
+          ? '確定できませんでした。検証エラーを確認してください。'
+          : '下書きに戻せませんでした。',
+      )
+      setIssues(body?.issues ?? [])
     }
   }
 
@@ -266,6 +276,7 @@ export function RunDetail() {
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <RunEditor
             run={run}
+            catalog={catalog}
             onCancel={() => setEditing(false)}
             onSaved={(saved) => void handleSaved(saved)}
           />
@@ -290,20 +301,25 @@ export function RunDetail() {
                 <h3 className="mb-2 font-medium text-slate-400 text-sm">WEEK {week}</h3>
                 <ol className="space-y-1">
                   {entries.map((e) => (
-                    <li key={e.id} className="flex items-center gap-2 text-sm">
-                      <span className="w-6 text-right font-mono text-slate-500">
-                        {e.orderInWeek}
-                      </span>
-                      {e.entryType === 'reroll' ? (
-                        <span className="text-slate-500 italic">
-                          ↻ {e.flavorText ?? 'リロール'}
+                    <li key={e.id} className="space-y-0.5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 text-right font-mono text-slate-500">
+                          {e.orderInWeek}
                         </span>
-                      ) : (
-                        <span className="text-slate-200">
-                          {e.name}
-                          <CatalogBadges kind={e.kind} verified={e.verified} />
-                        </span>
-                      )}
+                        {e.entryType === 'reroll' ? (
+                          <span className="text-slate-500 italic">
+                            ↻ {e.flavorText ?? 'リロール'}
+                          </span>
+                        ) : (
+                          <span className="text-slate-200">
+                            {e.name}
+                            <CatalogBadges kind={e.kind} verified={e.verified} />
+                          </span>
+                        )}
+                      </div>
+                      <SuggestHint
+                        suggestions={suggestFor(e.name, e.verified, catalog?.upgrades)}
+                      />
                     </li>
                   ))}
                 </ol>
@@ -328,6 +344,9 @@ export function RunDetail() {
                       <td className="px-4 py-2 text-slate-200">
                         {r.name}
                         <CatalogBadges verified={r.verified} />
+                        <SuggestHint
+                          suggestions={suggestFor(r.name, r.verified, catalog?.rewards)}
+                        />
                       </td>
                       <td className="px-4 py-2 text-right font-mono">{r.count}</td>
                       <td className="px-4 py-2 text-right font-mono">

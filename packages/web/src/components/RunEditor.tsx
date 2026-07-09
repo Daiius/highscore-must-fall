@@ -5,9 +5,14 @@
 // （スクショは呼び出し側が右の固定カラムに置く）。行ごとに:
 //   - 未検証 / OU バッジを出す（名前を変えるまでは元のカタログエントリの属性が有効）。
 //   - 変更した行にだけ「元: <値>」と「戻す」を出す。1 字違いを直すつもりで消してしまっても復帰できる。
+//   - verified カタログに近い名前があれば「もしかして」を出す。入力中の値に対して都度計算するので、
+//     手で打ち間違えた場合もその場で気づける。クリックで入力欄へ差し込む。
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
+import { type NameSuggestion, suggestSimilarNames } from 'shared'
 import { client } from '../api'
+import { callApi } from '../lib/api-result'
+import type { VerifiedCatalog } from '../lib/catalog'
 import {
   buildRecord,
   type EditorState,
@@ -15,6 +20,7 @@ import {
   type HistoryRow,
   historyNamePristine,
   historyRowChanged,
+  newRowKey,
   RESULT_FIELDS,
   type RewardRow,
   revertHistoryRow,
@@ -25,30 +31,46 @@ import {
 } from '../lib/run-record'
 import type { Issue, RunDetailData } from '../lib/run-types'
 import { CatalogBadges } from './CatalogBadges'
+import { SuggestHint } from './SuggestHint'
 
 const INPUT_CLASS =
   'rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-200 text-sm focus:border-indigo-500 focus:outline-none'
 
+const NO_SUGGESTIONS: NameSuggestion[] = []
+
 export function RunEditor({
   run,
+  catalog,
   onCancel,
   onSaved,
 }: {
   run: RunDetailData
+  /** 提案先の verified カタログ名。取得前は null（提案を出さないだけ）。 */
+  catalog: VerifiedCatalog | null
   onCancel: () => void
   /** 保存成功。warning（要確認）が残ることがあるので呼び出し側へ渡す。 */
   onSaved: (issues: Issue[]) => void
 }) {
-  // 行の React key。エントリ id は追加行に無いため、フォーム内で採番する。
-  const keySeq = useRef(0)
-  const nextKey = () => {
-    keySeq.current += 1
-    return keySeq.current
-  }
-  const [state, setState] = useState<EditorState>(() => editorStateFromRun(run, nextKey))
+  const [state, setState] = useState<EditorState>(() => editorStateFromRun(run))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [issues, setIssues] = useState<Issue[]>([])
+
+  // 入力のたびに全行 × カタログ全件を舐める計算。メモ化は React Compiler に任せる
+  // （手書きの useMemo は置かない。.claude/rules/react.md）。
+  const historySuggestions = new Map<string, NameSuggestion[]>()
+  const rewardSuggestions = new Map<string, NameSuggestion[]>()
+  if (catalog) {
+    for (const row of state.history) {
+      // reroll の flavor はカタログ対象外。
+      if (row.type === 'upgrade') {
+        historySuggestions.set(row.key, suggestSimilarNames(row.name, catalog.upgrades))
+      }
+    }
+    for (const row of state.rewards) {
+      rewardSuggestions.set(row.key, suggestSimilarNames(row.name, catalog.rewards))
+    }
+  }
 
   const pointsSum = sumPoints(state.rewards)
   const bonus = Number(state.result.apocalypse_bonus) || 0
@@ -58,31 +80,34 @@ export function RunEditor({
     setBusy(true)
     setError(null)
     setIssues([])
-    try {
-      const res = await client.api.runs[':id'].record.$put({
+    const result = await callApi<{ ok: boolean; issues?: Issue[] }>(() =>
+      client.api.runs[':id'].record.$put({
         param: { id: run.id },
         json: { record: buildRecord(run, state) },
-      })
-      const data = (await res.json()) as { ok?: boolean; issues?: Issue[]; error?: string }
-      if (res.ok && data.ok) {
-        onSaved(data.issues ?? [])
-        return
-      }
-      setIssues(data.issues ?? [])
-      setError(data.error ?? '保存できませんでした。検証エラーを確認してください。')
-    } catch {
+      }),
+    )
+    // onSaved は親がこのコンポーネントを畳むので、後始末（setBusy(false)）の後に呼ぶ。
+    setBusy(false)
+    if (result.ok) {
+      onSaved(result.value.issues ?? [])
+    } else if (result.error.kind === 'network') {
       setError('リクエストに失敗しました')
-    } finally {
-      setBusy(false)
+    } else if (result.error.kind === 'unauthorized') {
+      setError('セッションが切れました。ログインし直してください。')
+    } else {
+      // 422（contract 違反）は issues、409（draft でない / 解析中）は error を返す。
+      const body = result.error.body as { issues?: Issue[]; error?: string } | null
+      setIssues(body?.issues ?? [])
+      setError(body?.error ?? '保存できませんでした。検証エラーを確認してください。')
     }
   }
 
-  const patchHistory = (key: number, patch: Partial<HistoryRow>) =>
+  const patchHistory = (key: string, patch: Partial<HistoryRow>) =>
     setState((s) => ({
       ...s,
       history: s.history.map((r) => (r.key === key ? { ...r, ...patch } : r)),
     }))
-  const patchReward = (key: number, patch: Partial<RewardRow>) =>
+  const patchReward = (key: string, patch: Partial<RewardRow>) =>
     setState((s) => ({
       ...s,
       rewards: s.rewards.map((r) => (r.key === key ? { ...r, ...patch } : r)),
@@ -164,7 +189,7 @@ export function RunEditor({
                 history: [
                   ...s.history,
                   {
-                    key: nextKey(),
+                    key: newRowKey(),
                     // 直前の行と同じ週から書き始めるほうが打鍵が減る。
                     week: s.history.at(-1)?.week ?? '1',
                     type: 'upgrade',
@@ -250,6 +275,10 @@ export function RunEditor({
                   onRevert={() => patchHistory(row.key, revertHistoryRow(row))}
                 />
               )}
+              <SuggestHint
+                suggestions={historySuggestions.get(row.key) ?? NO_SUGGESTIONS}
+                onApply={(name) => patchHistory(row.key, { name })}
+              />
             </li>
           ))}
         </ol>
@@ -265,7 +294,7 @@ export function RunEditor({
                 ...s,
                 rewards: [
                   ...s.rewards,
-                  { key: nextKey(), name: '', count: '', points: '', origin: null },
+                  { key: newRowKey(), name: '', count: '', points: '', origin: null },
                 ],
               }))
             }
@@ -322,6 +351,10 @@ export function RunEditor({
                   onRevert={() => patchReward(row.key, revertRewardRow(row))}
                 />
               )}
+              <SuggestHint
+                suggestions={rewardSuggestions.get(row.key) ?? NO_SUGGESTIONS}
+                onApply={(name) => patchReward(row.key, { name })}
+              />
             </li>
           ))}
         </ul>
