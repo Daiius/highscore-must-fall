@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL, client } from '../api'
 import oneshotPrompt from '../assets/oneshot-prompt.txt?raw'
 import { ScreenshotUpload } from '../components/ScreenshotUpload'
+import { attempt, callApi } from '../lib/api-result'
 import { canUseAutoAnalysis, useAuth } from '../lib/auth'
 
 interface Issue {
@@ -70,55 +71,53 @@ export function Import() {
   }
 
   async function copyPrompt() {
-    try {
-      await navigator.clipboard.writeText(oneshotPrompt)
-      setPromptCopied(true)
-      if (promptCopiedTimer.current) clearTimeout(promptCopiedTimer.current)
-      promptCopiedTimer.current = setTimeout(() => setPromptCopied(false), 2000)
-    } catch {
+    const copied = await attempt(() => navigator.clipboard.writeText(oneshotPrompt))
+    if (!copied) {
       setError('クリップボードへのコピーに失敗しました')
+      return
     }
+    setPromptCopied(true)
+    if (promptCopiedTimer.current) clearTimeout(promptCopiedTimer.current)
+    promptCopiedTimer.current = setTimeout(() => setPromptCopied(false), 2000)
   }
 
   async function validate() {
     setBusy(true)
     setError(null)
-    try {
-      const res = await client.api.ingest.validate.$post({ json: { text, format } })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      setResult((await res.json()) as ValidateResult)
-    } catch {
+    const result = await callApi<ValidateResult>(() =>
+      client.api.ingest.validate.$post({ json: { text, format } }),
+    )
+    setBusy(false)
+    if (result.ok) {
+      setResult(result.value)
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'network') {
       setError('検証リクエストに失敗しました')
-    } finally {
-      setBusy(false)
+    } else {
+      // 413（本文過大）など。server は issues 付きで返すのでそのまま検証結果として見せる。
+      const body = result.error.body as { issues?: Issue[] } | null
+      setResult({ ok: false, format: null, issues: body?.issues ?? [] })
     }
   }
 
   async function save(status: 'draft' | 'confirmed') {
     setBusy(true)
     setError(null)
-    try {
-      const res = await client.api.runs.$post({
-        json: { text, format, status, source: 'paste' },
-      })
-      if (res.status === 401) {
-        clearSession()
-        return
-      }
-      const data = (await res.json()) as { ok: boolean; runId?: string; issues?: Issue[] }
-      if (res.ok && data.runId) {
-        void navigate({ to: '/runs/$id', params: { id: data.runId } })
-      } else {
-        setResult({ ok: false, format: null, issues: data.issues ?? [] })
-        setError('保存できませんでした。エラーを解消してください。')
-      }
-    } catch {
+    const result = await callApi<{ ok: boolean; runId: string; issues?: Issue[] }>(() =>
+      client.api.runs.$post({ json: { text, format, status, source: 'paste' } }),
+    )
+    setBusy(false)
+    if (result.ok) {
+      void navigate({ to: '/runs/$id', params: { id: result.value.runId } })
+    } else if (result.error.kind === 'unauthorized') {
+      clearSession()
+    } else if (result.error.kind === 'network') {
       setError('保存リクエストに失敗しました')
-    } finally {
-      setBusy(false)
+    } else {
+      const body = result.error.body as { issues?: Issue[] } | null
+      setResult({ ok: false, format: null, issues: body?.issues ?? [] })
+      setError('保存できませんでした。エラーを解消してください。')
     }
   }
 

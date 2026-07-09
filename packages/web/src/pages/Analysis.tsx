@@ -33,6 +33,7 @@ import {
   upgradeSeriesOf,
 } from 'shared'
 import { client } from '../api'
+import { callApi } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
 
 interface TimelineRunMeta {
@@ -110,21 +111,16 @@ export function Analysis() {
     void (async () => {
       setLoading(true)
       setError(null)
-      try {
-        const res = await client.api.analysis.summary.$get()
-        if (res.status === 401) {
-          clearSession()
-          return
-        }
-        if (!res.ok) {
-          setError('分析データの取得に失敗しました')
-          return
-        }
-        setSummary((await res.json()) as Summary)
-      } catch {
+      const result = await callApi<Summary>(() => client.api.analysis.summary.$get())
+      setLoading(false)
+      if (result.ok) {
+        setSummary(result.value)
+      } else if (result.error.kind === 'unauthorized') {
+        clearSession()
+      } else if (result.error.kind === 'status') {
+        setError('分析データの取得に失敗しました')
+      } else {
         setError('分析データの取得に失敗しました。時間をおいて再読み込みしてください。')
-      } finally {
-        setLoading(false)
       }
     })()
   }, [clearSession])

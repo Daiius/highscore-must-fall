@@ -41,6 +41,8 @@ catalog:
   "@tanstack/react-router": ^1.168.24
   vite: ^8.0.10
   "@vitejs/plugin-react": ^5.0.0
+  # メモ化はコンパイラに任せる（手書きの useMemo/useCallback を置かない。.claude/rules/react.md）。
+  babel-plugin-react-compiler: ^1.0.0
   tailwindcss: ^4.1.0
   "@tailwindcss/vite": ^4.1.0
   # グラフ（記述分析。prd/06）。

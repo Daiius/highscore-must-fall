@@ -4,6 +4,7 @@
 import { Navigate } from '@tanstack/react-router'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
 import { client, devLogin, signOut } from '../api'
+import { callApi } from './api-result'
 
 export interface AuthUser {
   id: string
@@ -38,15 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    try {
-      const res = await client.api.me.$get()
-      const data = (await res.json()) as { user: AuthUser | null }
-      setUser(data.user)
-    } catch {
-      setUser(null)
-    } finally {
-      setLoading(false)
-    }
+    const result = await callApi<{ user: AuthUser | null }>(() => client.api.me.$get())
+    setUser(result.ok ? result.value.user : null)
+    setLoading(false)
   }, [])
 
   const loginDev = useCallback(async () => {
