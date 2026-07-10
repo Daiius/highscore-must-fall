@@ -21,7 +21,8 @@
 ## カタログ
 - `upgrade_catalog` / `reward_catalog`: 正規キー・表示名・`unverified` フラグ・エイリアス。
 - **カタログは投入時の選択母集団が基本**。unverified 自動登録はゲーム更新にリスト整備が追いつかない期間の補助（prd/01 §7）。
-- **名称リストの正典は seed**（`packages/database/src/seed.ts`）: スクショ突合済み = verified / 実測 run 由来・未検証 = 仮登録(unverified)。読み取りミス疑いは seed に入れず、ローカル疑義リスト（`.claude-personal/`）→検証後に昇格。リロール名（DIGITIZE CONSCIOUSNESS 等）は **upgrade に入れない**。
+- **名称リストの正典は seed**（`packages/database/src/catalog-data.ts`。投入は `seed.ts`）: スクショ突合済み = verified / スクショ未検証 = 仮登録(unverified)。読み取りミス疑いは seed に入れず、ローカル疑義リスト（`.claude-personal/`）→検証後に昇格。リロール名（DIGITIZE CONSCIOUSNESS 等）は **upgrade に入れない**。
+- **`seed ⊆ series`**: seed の全名称は `shared/src/series.ts` に系統を持つか、`UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED` に明示登録されていること（`database/src/__tests__/catalog-seed.test.ts` が強制）。逆方向は制約にしない（series はガイド由来の未観測名を含む上位集合）。**スクショ収集の指針は [`prd/samples/README.md`](../../prd/samples/README.md)**。
 - **種別 `kind`**（`upgrade_catalog` のみ）: `contract`（既定） / `opportunity_upgrade`(OU)。OU はラン跨ぎ恒久解禁のメタ進行だが、UPGRADE HISTORY 上は通常アップグレードと同様に色付きで載る（例 `CONTEXT SWITCH`）。**記録は通常アップグレードと同じ**（`entry_type` に第3種は足さない）。`kind` は `unverified` 同様、後から人手で付与/検証する「一応後から区別できる」程度の属性。
 - **`reward_catalog` は run 内 reward（ゲーム内 "performance bonus" = `apocalypse_bonus` の内訳）のプール**。**Steam 実績(31個)とは別系統**（名前が一部重複するだけ。実績 `Schadenfreude` の定義が両レイヤーの別物性を裏付ける）。**Steam 実績名を seed / カタログに混入させない**。プールは run スクショ投入で unverified 自動登録して育てる。
 - **リロール(Citizen Proposals)は手書きの有限固定プール**（CHANGELOG が個数を数えて手動追加）だが、**カタログには登録しない**（`entry_type=reroll` で位置・回数のみ集計、フレーバーは任意で verbatim 保存）。完全な原文名リストは Web に無く、スクショが唯一の一次情報。
