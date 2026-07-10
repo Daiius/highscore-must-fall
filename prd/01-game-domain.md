@@ -113,12 +113,14 @@
   後で人手 verify/統合。[03](./03-data-model.md)）は、ゲームのアップデートにカタログ整備が
   追いつかない期間の**補助**であり、常用経路ではない（新名称は他プレイヤーの攻略情報の方が
   早く出回るため、リスト整備が追走する前提）。
-- **名称リストの正典は seed**（[`packages/database/src/seed.ts`](../packages/database/src/seed.ts)）。
+- **名称リストの正典は seed**（[`packages/database/src/catalog-data.ts`](../packages/database/src/catalog-data.ts)）。
   本文書にはリストを重複記載しない。seed 内の区分:
   - **verified** — スクショ一次情報（[§8 samples/](./samples/)）と突合済み。
-    sample-01〜03 由来: アップグレード 43 種 / リワード 28 種（2026-07-04 時点）。
-  - **仮登録（unverified）** — 実測 run 由来でスクショ未検証。読み取りミスが疑われる名称は
+    sample-01〜04 由来: アップグレード 51 種 / リワード 28 種（2026-07-11 時点）。
+  - **仮登録（unverified）** — スクショ未検証。読み取りミスが疑われる名称は
     seed に入れない（ローカルの疑義リストで管理し、検証後に昇格）。
+- **どのスクショを撮れば、どの未検証名が verified 化できるか**は
+  [`prd/samples/README.md`](./samples/README.md) に一覧化している。
 - リロール由来の灰色テキスト（`DIGITIZE CONSCIOUSNESS` / `WELCOMING CEREMONY`）は
   **アップグレードではない**ため含めない。同名の複数出現（`DEPLOY LASER WATCHTOWER` 等）は
   カタログ上 1 エントリ（重複は run 側の履歴で表現）。

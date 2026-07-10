@@ -28,7 +28,7 @@ export interface RewardSeed {
   verified: boolean
 }
 
-// スクショ検証済み（sample-01〜03: prd/samples/{contracts,rewards}*.png）。
+// スクショ検証済み（sample-01〜04: prd/samples/*.png）。
 const VERIFIED = { verified: true } as const
 // スクショ未検証の仮登録（実測 run 由来 / 二次情報のガイド由来）。
 const PROVISIONAL = { verified: false } as const
@@ -79,6 +79,16 @@ export const UPGRADES: readonly UpgradeSeed[] = [
   { name: 'EFFICIENT RELOADING', ...VERIFIED },
   { name: 'BULKY PROJECTILES', kind: 'opportunity_upgrade', ...VERIFIED },
   { name: 'EXTENDED SENSOR RANGE', kind: 'opportunity_upgrade', ...VERIFIED },
+  // sample-04 由来（8種）。主砲の第4経路 GARBAGE BLUNDERBUSS とその強化、および
+  // 本番で kind=contract として自動登録されていた OU 3種（再 seed で矯正される）。
+  { name: 'GARBAGE BLUNDERBUSS', ...VERIFIED },
+  { name: 'DELUXE TRASH COMPACTOR', ...VERIFIED },
+  { name: 'QUAD BLUNDERBUSS', ...VERIFIED },
+  { name: 'PENT BLUNDERBUSS', ...VERIFIED },
+  { name: 'REFINED BLAST CHAMBERS', ...VERIFIED },
+  { name: 'SLEEPER PROTOCOL', kind: 'opportunity_upgrade', ...VERIFIED },
+  { name: 'IN-FLIGHT REPAIRS', kind: 'opportunity_upgrade', ...VERIFIED },
+  { name: 'ADVANCED DRONE SYSTEMS', kind: 'opportunity_upgrade', ...VERIFIED },
   // 実測 run 由来の仮登録（6種）
   { name: 'EXTENDED BARREL', ...PROVISIONAL },
   { name: 'HARDENED SPLINTERS', ...PROVISIONAL },
@@ -86,6 +96,12 @@ export const UPGRADES: readonly UpgradeSeed[] = [
   { name: 'PIVOT RELOAD', kind: 'opportunity_upgrade', ...PROVISIONAL },
   { name: 'SPLINTERING POLES', ...PROVISIONAL },
   { name: 'TELEGRAPH BASILISK', ...PROVISIONAL },
+  // 本番カタログに unverified 自動登録されていた仮登録（4種・スクショ未取得）。
+  // EXPANDED SHIELD NETWORK はガイドで OU と判明しているため kind を与える。
+  { name: 'EXPANDED SHIELD NETWORK', kind: 'opportunity_upgrade', ...PROVISIONAL },
+  { name: 'PULSE REFLEX', ...PROVISIONAL },
+  { name: 'SHIELD BLAST', ...PROVISIONAL },
+  { name: 'ROBOTICS SPECIALIST', ...PROVISIONAL },
 ]
 
 export const REWARDS: readonly RewardSeed[] = [
