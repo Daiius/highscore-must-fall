@@ -245,6 +245,55 @@ Phase3 予定だった全自動投入ルートを前倒し。正典は [04-inges
 - 却下した代替案: run.status 拡張（ジョブ状態の置き場が結局別に要る）/ 独立 job → 成功時 run 生成（画像付け替えが複雑）/ job 1:N 履歴（個人用途に過剰）/ 既存 bot 基盤への同居（shared 契約に依存できない）/ worker の DB 直結（稼働場所が DB に縛られる）。
 - 付随緩和: run_image は 1 run 最大5枚・同一 section 複数可（section は自動ルートでは LLM 分類で埋め戻し）。
 
+## 主砲（レールガン）の4経路（2026-07-11 grill・確定）
+
+発端は「本番に蓄積された手法アップグレードのバリエーションが seed に無い」。実データで検証した結果、
+欠落は14件あり、`series.ts` のコメントにも誤りがあった。
+
+- **4経路の実名**: `volley`（VOLLEY RAILGUN → TRIPLE → QUAD → PENT）/ `coil`（COBALT COIL GUN）/
+  `basilisk`（TELEGRAPH BASILISK）/ `blunderbuss`（**GARBAGE BLUNDERBUSS**）。
+  4つ目は seed にも series.ts にも存在せず、`contracts-04.png` で初めて確定した。
+- **`BUNDLING` 系は独立経路ではない**。`INCREASE BUNDLING RATE` / `OVERWEIGHT BUNDLES` は
+  TELEGRAPH BASILISK の強化（連射速度）。`SPLINTERING POLES` / `HARDENED SPLINTERS` も basilisk 配下。
+  → `series.ts:36` の「Blunderbuss 経路」というコメントが誤解を招いていた（訂正済み）。
+- **経路は run 内で排他**。本番全 run に対する検定で反例0件
+  （2経路以上の武器名を持つ run が存在しない）。
+- **分岐ゲート**は `OFFENSIVE INNOVATION CENTER`。**その直後に必ず武器選択がある**（ゲーム仕様）。
+  よって「武器エントリを境界とする」と「OIC を境界とする」は同一地点に潰れる。
+- **`名前 → 経路` は関数にならない**。`INCREASE FIRE RATE` は分岐前にも分岐後にも取得できる
+  （`contracts-04.png` の W1/W2、`example-03.yaml:35,48`）。
+  → **run のエントリ列から動的に解決する**（武器の `upgrade_order` より前は共通、以降はその経路）。
+  武器を2系統持つ run は `unknown` に落として警告する（排他性の仮定が崩れたら気づけるように）。
+- 帰属が判明したもの: `GRAPHENE TIPPED RODS` / `RICOCHET MUNITIONS` = coil。
+  `EXTENDED BARREL` / `IMPROVE GIMBAL SPEED` = 分岐前共通。
+  `EFFICIENT RELOADING` は volley の run にのみ出現（`example-03.yaml:50`。専用か分岐後共通かは未確定）。
+- **`TRIPLE BLUNDERBUSS` は存在しないと推定**（seed に入れない）。根拠は prd/samples/README.md。
+
+### 置き場所（DB 変更なし）
+- 系統・経路は **`shared` のコードに持つ**。DB 列にしない。
+  理由: 系統は二次情報で今後も訂正が入り、コードなら再デプロイで全 run に即座に効く。
+  DB 列だと unverified 自動登録行に誤った値が書き込まれて固定される。
+  現状 `Analysis.tsx` のクライアント側計算で完結し、SQL で `GROUP BY series` する経路が無い。
+  → server 側で系統別集計 API を作る時が来たら、その時に列を足す。
+- **`seed ⊆ series`**: seed の全名称は series.ts に分類を持つか、
+  `UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED` に明示登録する。逆方向は制約にしない
+  （series はガイド由来の未観測名＝`OVERWEIGHT BUNDLES` や OU 20種を含む上位集合）。
+
+### 文字色は系統を示さない（訂正）
+`contracts-04.png` で反証。`INCREASE FIRE RATE`(主砲) と `STOCKPILE NUKES`(核) が同じ黄、
+`ANTIMATTER WARHEADS`(核) と `REGENERATIVE SHIELD`(シールド) が同じ青。
+色が何を示すか（レアリティ/階層）は未確定（prd/01 §9 の未確認項目）。
+
+### 実データが暴いた運用上の穴（別トピックで grill 予定）
+- **カタログが孤児で汚染される**。編集で誤読名を訂正すると、旧名の `upgrade_catalog` 行が
+  参照ゼロで残る（`DOUBLE-BARRELED DRONES`。正は L 2つ）。run 削除でも残る（`THIN DRONE FACTORY`）。
+  いずれも本番から手動 DELETE 済み。**掃除の仕組みが無い**。
+- **OU が `contract` として自動登録される**（既定値）。本番で4件。seed の `kind` 上書きで矯正。
+- **`verified` を昇格させる手段が seed 書き換え＋再デプロイしか無い**。
+  ユーザー心理は「早く確定させて分析したい」であり、これは正しい。
+  → 確定を厳しくするのではなく、**訂正コストを下げる**方向で解く（Task 8 カタログ管理 UI、
+  および「unverified・参照ゼロ・seed 外」の孤児の自動掃除）。
+
 ## 残りの小論点（PRD 執筆時に既定値で確定予定。異論あれば grill）
 - `played_at` の出所: 既定=投入時刻、手動上書き可（スクショに日付なし）。
 - run の重複投入: 重複検出はせず許容、手動削除で対応（MVP）。
