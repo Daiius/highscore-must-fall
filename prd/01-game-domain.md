@@ -124,7 +124,9 @@
 - リロール由来の灰色テキスト（`DIGITIZE CONSCIOUSNESS` / `WELCOMING CEREMONY`）は
   **アップグレードではない**ため含めない。同名の複数出現（`DEPLOY LASER WATCHTOWER` 等）は
   カタログ上 1 エントリ（重複は run 側の履歴で表現）。
-- `CONTEXT SWITCH` のみ `kind=opportunity_upgrade`（OU。[03](./03-data-model.md) §3.5）。
+- **OU（`kind=opportunity_upgrade`）の正典は seed**（[`catalog-data.ts`](../packages/database/src/catalog-data.ts)）。
+  既知の OU（`CONTEXT SWITCH` / `SLEEPER PROTOCOL` / `IN-FLIGHT REPAIRS` 等）はそこで `kind` を明示し、
+  再 seed で本番の `contract` 誤登録（unverified 自動登録は既定 `contract`）を矯正する（OU。[03](./03-data-model.md) §3.5）。
 
 ## 8. サンプルデータ（一次情報）
 
