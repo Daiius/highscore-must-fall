@@ -205,9 +205,11 @@ RewardEntry { name: string, count: int, points: int }
 - **ユーザーデータ**（run / *_entry / run_image / run_payload）は `owner_id` で厳格分離（MVP=private、[05](./05-auth-and-privacy.md)）。
 - **カタログはグローバル**（owner を持たない）とする。アップグレード/リワード名は**ゲームの客観的事実**であり、
   個人データではない。グローバルにすることで将来の横断統計（[06](./06-analysis.md) Phase2）が名寄せ済みで直接行える。
-  - 未知名は誰の投入でも unverified で自動登録され、**中央（管理者）でキュー的に verify/マージ**する。
+  - 未知名は誰の投入でも unverified で自動登録される。中央（管理者）が行うのは**マージと孤児掃除**まで
+    （[08](./08-catalog-lifecycle.md) §6）。**`verified` への昇格は UI/API からは行わず**、`prd/samples/` への
+    画像コミット＋seed の `evidence` 記述で PR を通す（[08](./08-catalog-lifecycle.md) §5）。
   - ✅ **決定（2026-07-02）**: カタログは**グローバル**で確定。マルチユーザーでの汚染懸念
-    （悪意ある投入が unverified を増やす）は unverified 自動登録＋人手 verify/マージで受ける。
+    （悪意ある投入が unverified を増やす）は unverified 自動登録＋人手のマージ/孤児掃除で受ける。
     却下した代替案: カタログを owner ごとに持つ（分離は固いが横断統計が複雑化するため不採用）。
 
 ## 6. パフォーマンス原則

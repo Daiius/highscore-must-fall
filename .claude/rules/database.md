@@ -19,6 +19,14 @@
   - インデックス: `(run_id)`, `(upgrade_catalog_id, week_index)` 系。
 
 ## カタログ
+
+> **⚠️ 未実装（2026-07-11 時点）**: `evidence` フィールド・`seed ⊆ samples` テスト・`verified` を機能ゲートから
+> 外す変更（自動確定ゲート / サジェストの候補プール）・カタログ管理 UI・孤児掃除は**まだコードに無い**。
+> 現行コードは `catalog-data.ts` が `verified: boolean` を直接持ち、`catalog-seed.test.ts` は `seed ⊆ series` だけを
+> 検査し、自動確定ゲート（`server/src/lib/analysis-jobs.ts`）は全名称 verified を要求している。
+> **以下は後続 PR で実装する仕様であり、「既にそうなっている」前提で判断しないこと。**
+> 実装が追いつくまでは、この注記ごと更新する（正典: [`prd/08-catalog-lifecycle.md`](../../prd/08-catalog-lifecycle.md)）。
+
 - `upgrade_catalog` / `reward_catalog`: 正規キー・表示名・`unverified` フラグ・エイリアス。
 - **カタログは投入時の選択母集団が基本**。unverified 自動登録はゲーム更新にリスト整備が追いつかない期間の補助（prd/01 §7）。
 - **名称リストの正典は seed**（`packages/database/src/catalog-data.ts`。投入は `seed.ts`）。読み取りミス疑いは seed に入れず、ローカル疑義リスト（`.claude-personal/catalog-suspects.md`）→検証後に昇格。リロール名（DIGITIZE CONSCIOUSNESS 等）は **upgrade に入れない**。

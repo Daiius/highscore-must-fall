@@ -18,9 +18,12 @@
 | `contracts` | UPGRADE HISTORY（週グループ・取得順・リロールの灰色斜体を含む） |
 | `rewards` | REWARD LEDGER（`name` / `count` / `points`） |
 
-**この拡張子を除いたファイル名が `evidence` 識別子**である（例 `contracts-04`）。
+**この拡張子を除いたファイル名が `evidence` 識別子**になる（例 `contracts-04`）。
 `catalog-data.ts` の各エントリはこの値で「どの画像と突合したか」を示し、テストが実在を強制する
 （[`prd/08-catalog-lifecycle.md`](../08-catalog-lifecycle.md) §3）。**ここにある画像を消す/改名するとテストが落ちる。**
+
+> **⚠️ 未実装（2026-07-11 時点）**: `evidence` フィールドと `seed ⊆ samples` テストは後続 PR。
+> 現行の `catalog-data.ts` は `verified: boolean` を直接持ち、画像との対応はコードに記録されていない。
 
 **3 section が揃っている必要はない。** カタログの `verified` 化だけが目的なら `contracts` か
 `rewards` の1枚で足りる（実際 sample-04 は `contracts-04.png` のみ）。
