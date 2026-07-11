@@ -127,17 +127,21 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
 }
 
 /**
- * 系統を **意図的に** 割り当てない正規名。「まだ調べていない穴」と「調べた上で属さないと決めた名前」を
- * 区別するために明示する。カタログ seed の全名称は、このどちらか（分類済み or ここ）に載る必要がある
- * （database の __tests__/catalog-seed.test.ts が強制）。
+ * 系統を割り当てない正規名（**未分類**）。「特定系統に属さないと決めた名前」と
+ * 「まだ分からない名前」の**両方**がここに入る。**未分類は一級市民**であり、
+ * 分類が付くまでの待避所ではなく、そのまま `unknown` バケットとして分析に乗る（prd/06 §1.1）。
+ *
+ * カタログ seed の全名称は、分類済み（UPGRADE_SERIES_BY_NAME）かここかのどちらかに載る必要がある
+ * （database の __tests__/catalog-seed.test.ts が強制）。ゲーム更新で増えた新要素は、
+ * **系統が分かるまでここに1行足せば seed に入れられる**（分類を調べ切るまで seed が止まらないように）。
  */
-export const UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED: ReadonlySet<string> = new Set([
+export const UPGRADE_SERIES_UNCLASSIFIED: ReadonlySet<string> = new Set([
   // 全分野に跨る高度技術の解放前提。特定系統に属さない（ユーザー確認済み）。
   'ADVANCED MATERIALS LAB',
   // ガイドの系統ツリーに無い。実測 run では出現するが所属不明。
   'SUPERCONDUCTING POWER LINES',
   'ROBOTICS SPECIALIST',
-  // sample-04 で観測。名前は核（blast chambers）にもシールド（plasma）にも読め、未確定。
+  // contracts-04.png で観測。名前は核（blast chambers）にもシールド（plasma）にも読め、未確定。
   'REFINED BLAST CHAMBERS',
 ])
 

@@ -20,12 +20,10 @@
 
 ## カタログ
 
-> **⚠️ 未実装（2026-07-12 時点）**: `evidence` フィールド・`seed ⊆ samples` テスト・カタログ管理 UI・
-> 孤児掃除は**まだコードに無い**。現行コードは `catalog-data.ts` が `verified: boolean` を直接持ち
-> （どの画像で裏取りしたかは残らない）、`catalog-seed.test.ts` は `seed ⊆ series` だけを検査する。
+> **⚠️ 未実装（2026-07-12 時点）**: **カタログ管理 UI・孤児掃除**は**まだコードに無い**。
 > **これらは後続 PR で実装する仕様であり、「既にそうなっている」前提で判断しないこと。**
-> 一方 **`verified` を機能ゲートから外す変更は実装済み**（自動確定ゲートに名前の条件は無く、
-> サジェストの候補プールは全カタログ名）。実装が追いつくたびにこの注記ごと更新する
+> 一方 **`verified` の機能ゲート外し**と **`evidence`**（`catalog-data.ts` の証拠フィールド・
+> `seed ⊆ samples` テスト）は**実装済み**。実装が追いつくたびにこの注記ごと更新する
 > （正典: [`prd/08-catalog-lifecycle.md`](../../prd/08-catalog-lifecycle.md)）。
 
 - `upgrade_catalog` / `reward_catalog`: 正規キー・表示名・`unverified` フラグ・エイリアス。

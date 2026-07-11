@@ -7,6 +7,7 @@
 
 import { normalizeName } from 'shared'
 import {
+  isVerified,
   REWARDS,
   type RewardSeed,
   UPGRADES,
@@ -15,6 +16,8 @@ import {
 } from './catalog-data'
 import { client, db, rewardCatalog, upgradeCatalog } from './index'
 
+// DB の verified は seed の evidence の投影（DB に evidence は持たせない。prd/08 §3）。
+
 /** upgrade を canonical_key で重複排除した seed 行（kind 付き）に変換する。 */
 function toUpgradeRows(items: readonly UpgradeSeed[]) {
   // 正規形は表示にもそのまま使う（別の表示名を持たない）。
@@ -22,9 +25,14 @@ function toUpgradeRows(items: readonly UpgradeSeed[]) {
     string,
     { canonicalKey: string; displayName: string; kind: UpgradeKind; verified: boolean }
   >()
-  for (const { name, kind, verified } of items) {
-    const key = normalizeName(name)
-    byKey.set(key, { canonicalKey: key, displayName: key, kind: kind ?? 'contract', verified })
+  for (const item of items) {
+    const key = normalizeName(item.name)
+    byKey.set(key, {
+      canonicalKey: key,
+      displayName: key,
+      kind: item.kind ?? 'contract',
+      verified: isVerified(item),
+    })
   }
   return [...byKey.values()]
 }
@@ -32,9 +40,9 @@ function toUpgradeRows(items: readonly UpgradeSeed[]) {
 /** reward を canonical_key で重複排除した seed 行に変換する。 */
 function toRewardRows(items: readonly RewardSeed[]) {
   const byKey = new Map<string, { canonicalKey: string; displayName: string; verified: boolean }>()
-  for (const { name, verified } of items) {
-    const key = normalizeName(name)
-    byKey.set(key, { canonicalKey: key, displayName: key, verified })
+  for (const item of items) {
+    const key = normalizeName(item.name)
+    byKey.set(key, { canonicalKey: key, displayName: key, verified: isVerified(item) })
   }
   return [...byKey.values()]
 }
