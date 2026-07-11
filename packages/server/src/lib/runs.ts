@@ -49,6 +49,14 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 /**
  * upgrade 名（正規形）を upgrade_catalog の id へ解決する。
  * 既知（canonical_key 一致）→ 別名（catalog_alias）→ 無ければ unverified で自動登録。
+ *
+ * **既知・別名の探索はロック読み取り**（`FOR UPDATE`）で行う。カタログ行は管理 API のマージ・
+ * 孤児削除で消えうるため（catalog-admin.ts）、非ロック読みだと 2 つ壊れる:
+ *   1. 見つけた id が、コミット前にマージで削除され、後続の *_entry 挿入が FK 違反で落ちる。
+ *   2. REPEATABLE READ の非ロック読みはトランザクション開始時のスナップショットを見るため、
+ *      直前に commit されたマージの alias が見えず、統合先へ名寄せできない。
+ * ロック読みは常に最新のコミット済み版を読み、行を掴んでいる間は削除もブロックする
+ * （＝マージ側の `FOR UPDATE` が待つ。どちらが先でも整合する）。
  */
 async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Promise<string> {
   const existing = await tx
@@ -56,6 +64,7 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
     .from(upgradeCatalog)
     .where(eq(upgradeCatalog.canonicalKey, key))
     .limit(1)
+    .for('update')
   if (existing[0]) return existing[0].id
 
   const alias = await tx
@@ -63,6 +72,7 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
     .from(catalogAlias)
     .where(and(eq(catalogAlias.catalogKind, 'upgrade'), eq(catalogAlias.aliasKey, key)))
     .limit(1)
+    .for('update')
   if (alias[0]?.id) return alias[0].id
 
   // 原子的な insert-or-get。同一未知名を含む run が同時保存されても一意制約違反で落とさない。
@@ -91,13 +101,14 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
   return id
 }
 
-/** reward 名（正規形）を reward_catalog の id へ解決する（upgrade と同じ順序）。 */
+/** reward 名（正規形）を reward_catalog の id へ解決する（upgrade と同じ順序・同じロック方針）。 */
 async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promise<string> {
   const existing = await tx
     .select({ id: rewardCatalog.id })
     .from(rewardCatalog)
     .where(eq(rewardCatalog.canonicalKey, key))
     .limit(1)
+    .for('update')
   if (existing[0]) return existing[0].id
 
   const alias = await tx
@@ -105,6 +116,7 @@ async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promi
     .from(catalogAlias)
     .where(and(eq(catalogAlias.catalogKind, 'reward'), eq(catalogAlias.aliasKey, key)))
     .limit(1)
+    .for('update')
   if (alias[0]?.id) return alias[0].id
 
   // 原子的な insert-or-get（upgrade 側と同じ理由・同じ形）。
