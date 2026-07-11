@@ -67,13 +67,29 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
     .for('update')
   if (existing[0]) return existing[0].id
 
+  // alias 解決。**統合先のカタログ行もこの場でロックする** — alias が指す先自体がさらにマージ・
+  // 孤児削除されうるため、ロックせずに entry 挿入へ進むと FK 違反で落ちる（HSF-17D3E52C）。
+  // 統合先が消えていた（さらにマージされた）場合は alias が張り替わっているので、解決をやり直す。
   const alias = await tx
     .select({ id: catalogAlias.upgradeCatalogId })
     .from(catalogAlias)
     .where(and(eq(catalogAlias.catalogKind, 'upgrade'), eq(catalogAlias.aliasKey, key)))
     .limit(1)
     .for('update')
-  if (alias[0]?.id) return alias[0].id
+  const aliasTargetId = alias[0]?.id
+  if (aliasTargetId) {
+    const target = await tx
+      .select({ id: upgradeCatalog.id })
+      .from(upgradeCatalog)
+      .where(eq(upgradeCatalog.id, aliasTargetId))
+      .limit(1)
+      .for('update')
+    const targetId = target[0]?.id
+    // alias 行は統合先への FK を cascade で持つので、統合先が消えていれば alias も消えている
+    // （＝ここには来ない）。来たらデータが壊れているので、誤読名を再登録せず落とす。
+    if (!targetId) throw new Error(`catalog_alias points at a missing upgrade_catalog: ${key}`)
+    return targetId
+  }
 
   // 原子的な insert-or-get。同一未知名を含む run が同時保存されても一意制約違反で落とさない。
   // 競合時の set は canonical_key 自身への no-op（既存の display_name/first_seen を壊さない）。
@@ -111,13 +127,25 @@ async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promi
     .for('update')
   if (existing[0]) return existing[0].id
 
+  // alias 解決。統合先のカタログ行もこの場でロックする（upgrade 側と同じ理由。HSF-17D3E52C）。
   const alias = await tx
     .select({ id: catalogAlias.rewardCatalogId })
     .from(catalogAlias)
     .where(and(eq(catalogAlias.catalogKind, 'reward'), eq(catalogAlias.aliasKey, key)))
     .limit(1)
     .for('update')
-  if (alias[0]?.id) return alias[0].id
+  const aliasTargetId = alias[0]?.id
+  if (aliasTargetId) {
+    const target = await tx
+      .select({ id: rewardCatalog.id })
+      .from(rewardCatalog)
+      .where(eq(rewardCatalog.id, aliasTargetId))
+      .limit(1)
+      .for('update')
+    const targetId = target[0]?.id
+    if (!targetId) throw new Error(`catalog_alias points at a missing reward_catalog: ${key}`)
+    return targetId
+  }
 
   // 原子的な insert-or-get（upgrade 側と同じ理由・同じ形）。
   await tx

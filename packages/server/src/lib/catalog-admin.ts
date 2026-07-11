@@ -20,6 +20,7 @@ import {
 } from 'database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { normalizeName } from 'shared'
+import { withDeadlockRetry } from './runs'
 
 export type CatalogKind = 'upgrade' | 'reward'
 
@@ -104,7 +105,12 @@ export async function mergeCatalogEntry(
   targetId: string,
 ): Promise<CatalogMutationResult> {
   if (sourceId === targetId) return { ok: false, code: 'same_entry' }
-  return kind === 'upgrade' ? mergeUpgrade(sourceId, targetId) : mergeReward(sourceId, targetId)
+  // 並行する run 投入とはロック順が交差しうる（投入は alias 行 → 統合先カタログ行、マージは
+  // カタログ行 → alias 行）。投入側と同じく限定的に再試行し、admin 操作が一過性の
+  // デッドロック/ロック待ちで 500 にならないようにする（HSF-17D3E52C）。
+  return withDeadlockRetry(() =>
+    kind === 'upgrade' ? mergeUpgrade(sourceId, targetId) : mergeReward(sourceId, targetId),
+  )
 }
 
 /** 同時マージのデッドロックを避けるため、行ロックは id 昇順で取る（決定順）。 */
@@ -300,7 +306,10 @@ export async function deleteOrphanCatalogEntry(
   kind: CatalogKind,
   id: string,
 ): Promise<CatalogMutationResult> {
-  return kind === 'upgrade' ? deleteOrphanUpgrade(id) : deleteOrphanReward(id)
+  // マージと同じ理由で再試行する（並行投入とロック順が交差しうる）。
+  return withDeadlockRetry(() =>
+    kind === 'upgrade' ? deleteOrphanUpgrade(id) : deleteOrphanReward(id),
+  )
 }
 
 async function deleteOrphanUpgrade(id: string): Promise<CatalogMutationResult> {
