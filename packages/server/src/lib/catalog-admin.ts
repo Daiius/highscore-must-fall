@@ -156,9 +156,6 @@ async function mergeReward(sourceId: string, targetId: string): Promise<CatalogM
       return { ok: false, code: 'seed_protected' } as const
     }
 
-    // reward_entry は「run 内の1名前 = 1行」（リワード台帳の集計行）。同じ run に source と target の
-    // 両方があると、単純な付け替えで同名2行になる。台帳としてありえない形なので、回数・点を合算して
-    // 1行に畳む（誤読で1つの行が2つに割れていた、が実態）。
     const sourceRows = await tx
       .select({
         id: rewardEntry.id,
@@ -168,6 +165,7 @@ async function mergeReward(sourceId: string, targetId: string): Promise<CatalogM
       })
       .from(rewardEntry)
       .where(eq(rewardEntry.rewardCatalogId, sourceId))
+      .for('update')
     const targetRows = await tx
       .select({
         id: rewardEntry.id,
@@ -177,24 +175,17 @@ async function mergeReward(sourceId: string, targetId: string): Promise<CatalogM
       })
       .from(rewardEntry)
       .where(eq(rewardEntry.rewardCatalogId, targetId))
-    const targetByRun = new Map(targetRows.map((r) => [r.runId, r]))
+      .for('update')
 
-    let merged = 0
-    for (const row of sourceRows) {
-      const collide = targetByRun.get(row.runId)
-      if (collide) {
-        await tx
-          .update(rewardEntry)
-          .set({ count: collide.count + row.count, points: collide.points + row.points })
-          .where(eq(rewardEntry.id, collide.id))
-        await tx.delete(rewardEntry).where(eq(rewardEntry.id, row.id))
-      } else {
-        await tx
-          .update(rewardEntry)
-          .set({ rewardCatalogId: targetId })
-          .where(eq(rewardEntry.id, row.id))
-      }
-      merged += 1
+    const plan = planRewardMerge(sourceRows, targetRows)
+    for (const u of plan.updates) {
+      await tx
+        .update(rewardEntry)
+        .set({ rewardCatalogId: targetId, count: u.count, points: u.points })
+        .where(eq(rewardEntry.id, u.id))
+    }
+    if (plan.deletes.length > 0) {
+      await tx.delete(rewardEntry).where(inArray(rewardEntry.id, plan.deletes))
     }
 
     await tx
@@ -214,8 +205,70 @@ async function mergeReward(sourceId: string, targetId: string): Promise<CatalogM
       .onDuplicateKeyUpdate({ set: { rewardCatalogId: targetId } })
 
     await tx.delete(rewardCatalog).where(eq(rewardCatalog.id, sourceId))
-    return { ok: true, mergedEntries: merged } as const
+    return { ok: true, mergedEntries: sourceRows.length } as const
   })
+}
+
+/** reward マージで書き換える行（`rewardCatalogId` は常に統合先に付け替える）。 */
+export interface RewardMergeUpdate {
+  id: string
+  count: number
+  points: number
+}
+
+export interface RewardMergePlan {
+  updates: RewardMergeUpdate[]
+  deletes: string[]
+}
+
+/**
+ * reward_entry は「run 内の1名前 = 1行」（リワード台帳の集計行）。統合すると同じ run に同名2行が
+ * できうるので、**run ごとに1行へ畳む**（回数・点は合算）。誤読で1つの台帳行が2つに割れていた、が実態。
+ *
+ * 同じ run に統合元の行が**複数**あることもある（`reward_ledger` の名前重複を schema も DB も禁じて
+ * いない＝LLM の誤読で起こりうる）。したがって「1行ずつ統合先に足す」実装では、2行目以降の更新が
+ * 直前の合算結果を上書きして回数・点を失う。**先に run 単位で合算してから1回だけ書く**。
+ *
+ * 残す行は id 昇順で先頭（決定的に選ぶ）。純関数にしてあるのはここをテストで固定するため。
+ */
+export function planRewardMerge(
+  sourceRows: readonly RewardEntryRow[],
+  targetRows: readonly RewardEntryRow[],
+): RewardMergePlan {
+  const byRun = new Map<string, { ids: string[]; count: number; points: number }>()
+  const fold = (rows: readonly RewardEntryRow[]) => {
+    for (const row of rows) {
+      const agg = byRun.get(row.runId) ?? { ids: [], count: 0, points: 0 }
+      agg.ids.push(row.id)
+      agg.count += row.count
+      agg.points += row.points
+      byRun.set(row.runId, agg)
+    }
+  }
+  // 統合先の行を先に畳む（run 内に統合先が既にあれば、その行を残す）。
+  fold(targetRows)
+  fold(sourceRows)
+
+  const sourceRunIds = new Set(sourceRows.map((r) => r.runId))
+  const updates: RewardMergeUpdate[] = []
+  const deletes: string[] = []
+  for (const [runId, agg] of byRun) {
+    // 統合元が1行も無い run は触らない（統合先だけの run は現状のまま）。
+    if (!sourceRunIds.has(runId)) continue
+    const ids = [...agg.ids].sort()
+    const keep = ids[0]
+    if (keep === undefined) continue
+    updates.push({ id: keep, count: agg.count, points: agg.points })
+    deletes.push(...ids.slice(1))
+  }
+  return { updates, deletes }
+}
+
+export interface RewardEntryRow {
+  id: string
+  runId: string
+  count: number
+  points: number
 }
 
 /**
@@ -248,11 +301,13 @@ async function deleteOrphanUpgrade(id: string): Promise<CatalogMutationResult> {
       .from(upgradeEntry)
       .where(eq(upgradeEntry.upgradeCatalogId, id))
       .limit(1)
+      .for('update')
     const aliases = await tx
       .select({ id: catalogAlias.id })
       .from(catalogAlias)
       .where(and(eq(catalogAlias.catalogKind, 'upgrade'), eq(catalogAlias.upgradeCatalogId, id)))
       .limit(1)
+      .for('update')
     if (
       !isOrphan(
         {
@@ -291,11 +346,13 @@ async function deleteOrphanReward(id: string): Promise<CatalogMutationResult> {
       .from(rewardEntry)
       .where(eq(rewardEntry.rewardCatalogId, id))
       .limit(1)
+      .for('update')
     const aliases = await tx
       .select({ id: catalogAlias.id })
       .from(catalogAlias)
       .where(and(eq(catalogAlias.catalogKind, 'reward'), eq(catalogAlias.rewardCatalogId, id)))
       .limit(1)
+      .for('update')
     if (
       !isOrphan(
         {

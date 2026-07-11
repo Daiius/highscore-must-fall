@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOrphan, SEED_KEYS } from '../catalog-admin'
+import { isOrphan, planRewardMerge, SEED_KEYS } from '../catalog-admin'
 
 // 孤児 = 誤読の残骸（prd/08 §7）。4条件をすべて満たすものだけが削除対象。
 // 1つでも欠ければ削除しない — 削除は取り消せないので、判定は保守側に倒す。
@@ -38,6 +38,61 @@ describe('isOrphan', () => {
   it('種別ごとに seed を見る（upgrade 名は reward の seed ではない）', () => {
     expect(isOrphan({ ...orphan, canonicalKey: 'CLOSE SHAVE' }, 'reward')).toBe(false)
     expect(isOrphan({ ...orphan, canonicalKey: 'CLOSE SHAVE' }, 'upgrade')).toBe(true)
+  })
+})
+
+// reward_entry は「run 内の1名前 = 1行」。マージでその不変条件を壊さない（回数・点も落とさない）。
+describe('planRewardMerge', () => {
+  it('衝突しない run は付け替えるだけ（回数・点はそのまま）', () => {
+    const plan = planRewardMerge([{ id: 's1', runId: 'r1', count: 1, points: 30 }], [])
+    expect(plan).toEqual({ updates: [{ id: 's1', count: 1, points: 30 }], deletes: [] })
+  })
+
+  it('同じ run に統合先の行があれば合算して1行に畳む', () => {
+    const plan = planRewardMerge(
+      [{ id: 's1', runId: 'r1', count: 1, points: 30 }],
+      [{ id: 'a1', runId: 'r1', count: 2, points: 60 }],
+    )
+    expect(plan.updates).toEqual([{ id: 'a1', count: 3, points: 90 }])
+    expect(plan.deletes).toEqual(['s1'])
+  })
+
+  it('同じ run に統合元の行が複数あっても回数・点を落とさない（HSF-59A72C47）', () => {
+    // 1行ずつ統合先に足す実装だと、2行目の update が1行目の合算結果を上書きして 30 点が消える。
+    const plan = planRewardMerge(
+      [
+        { id: 's1', runId: 'r1', count: 1, points: 30 },
+        { id: 's2', runId: 'r1', count: 2, points: 40 },
+      ],
+      [{ id: 'a1', runId: 'r1', count: 1, points: 10 }],
+    )
+    expect(plan.updates).toEqual([{ id: 'a1', count: 4, points: 80 }])
+    expect(plan.deletes).toEqual(['s1', 's2'])
+  })
+
+  it('統合先が無い run で統合元が複数でも、1行に畳んで合算する', () => {
+    const plan = planRewardMerge(
+      [
+        { id: 's2', runId: 'r1', count: 2, points: 40 },
+        { id: 's1', runId: 'r1', count: 1, points: 30 },
+      ],
+      [],
+    )
+    // 残す行は id 昇順の先頭（決定的）。
+    expect(plan.updates).toEqual([{ id: 's1', count: 3, points: 70 }])
+    expect(plan.deletes).toEqual(['s2'])
+  })
+
+  it('統合元が無い run（統合先だけ）は触らない', () => {
+    const plan = planRewardMerge(
+      [{ id: 's1', runId: 'r1', count: 1, points: 30 }],
+      [
+        { id: 'a1', runId: 'r1', count: 1, points: 10 },
+        { id: 'a2', runId: 'r2', count: 5, points: 50 },
+      ],
+    )
+    expect(plan.updates).toEqual([{ id: 'a1', count: 2, points: 40 }])
+    expect(plan.deletes).toEqual(['s1'])
   })
 })
 
