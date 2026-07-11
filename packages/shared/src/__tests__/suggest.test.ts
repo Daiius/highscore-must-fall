@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { damerauLevenshtein, homoglyphSkeleton, suggestSimilarNames } from '../suggest'
 
-/** 実カタログから、似た名前が同居する部分を抜いた候補プール（提案先は verified のみの想定）。 */
+/** 実カタログから、似た名前が同居する部分を抜いた候補プール。 */
 const UPGRADES = [
   'RATIONED WARHEADS',
   'NUCLEAR WEAPONS LAB',
@@ -52,10 +52,21 @@ describe('suggestSimilarNames', () => {
     expect(top).toMatchObject({ name: 'RATIONED WARHEADS', distance: 1, homoglyph: false })
   })
 
-  it('完全一致する候補があれば提案しない（誤読ではない）', () => {
-    expect(suggestSimilarNames('ARC FLAIL', UPGRADES)).toEqual([])
-    // 正規化を通すので大小・空白の揺れも一致扱い。
-    expect(suggestSimilarNames('  arc   flail ', UPGRADES)).toEqual([])
+  it('入力と一致する候補は「自分自身」として除外する', () => {
+    // 誤読名は unverified で自動登録されるので、候補プール（＝全カタログ名）に自分自身が入る。
+    // これを弾かないと「完全一致 → 提案なし」になり、誤読名にこそ出したい提案が消える。
+    const pool = [...UPGRADES, 'ARC FLAILL'] // 'ARC FLAILL' = 自動登録された誤読名
+    const results = suggestSimilarNames('ARC FLAILL', pool)
+    expect(results.map((r) => r.name)).not.toContain('ARC FLAILL')
+    expect(results[0]).toMatchObject({ name: 'ARC FLAIL', distance: 1 })
+    // 正規化を通すので大小・空白の揺れも自分自身として扱う。
+    expect(suggestSimilarNames('  arc   flailL ', pool).map((r) => r.name)).toEqual(['ARC FLAIL'])
+  })
+
+  it('正しい名前でも近い候補があれば返す（抑制するかは呼び出し側の責務）', () => {
+    // verified 名との一致による抑制は web 側（suggestFromCatalog）が持つ。ここでは畳み込まない。
+    const results = suggestSimilarNames('ARC FLAIL', [...UPGRADES, 'ARC FLAILL'])
+    expect(results.map((r) => r.name)).toEqual(['ARC FLAILL'])
   })
 
   it('単語が重なるだけの別物は提案しない', () => {

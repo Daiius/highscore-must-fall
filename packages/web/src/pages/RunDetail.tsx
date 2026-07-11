@@ -4,7 +4,6 @@
 
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { type NameSuggestion, suggestSimilarNames } from 'shared'
 import { client } from '../api'
 import { AnalysisBadge, isAnalysisActive } from '../components/AnalysisBadge'
 import { CatalogBadges } from '../components/CatalogBadges'
@@ -14,29 +13,17 @@ import { StatusBadge } from '../components/StatusBadge'
 import { SuggestHint } from '../components/SuggestHint'
 import { callApi } from '../lib/api-result'
 import { canUseAutoAnalysis, useAuth } from '../lib/auth'
-import { useVerifiedCatalog } from '../lib/catalog'
+import { suggestFromCatalog, useCatalog } from '../lib/catalog'
 import type { AnalysisJobInfo, Issue, RunDetailData, UpgradeEntry } from '../lib/run-types'
 
-const NO_SUGGESTIONS: NameSuggestion[] = []
-
-/**
- * 表示モードの候補計算。unverified なエントリ（＝誤読がそのまま自動登録された疑いのある名前）にだけ出す。
- * confirmed でも出す。編集画面でだけ提案すると、気づける機会をそこでしか得られないため。
- */
-function suggestFor(
-  name: string | null,
-  verified: boolean | null,
-  pool: string[] | undefined,
-): NameSuggestion[] {
-  if (verified !== false || !name || !pool) return NO_SUGGESTIONS
-  return suggestSimilarNames(name, pool)
-}
+// 表示モードでも候補を出す（confirmed でも）。編集画面でだけ提案すると、気づける機会をそこでしか
+// 得られないため。出す/出さないの判断は suggestFromCatalog に集約している（verified 名と一致すれば出ない）。
 
 export function RunDetail() {
   const { id } = useParams({ from: '/runs/$id' })
   const navigate = useNavigate()
   const { user, clearSession } = useAuth()
-  const catalog = useVerifiedCatalog()
+  const catalog = useCatalog()
   const [run, setRun] = useState<RunDetailData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -317,9 +304,7 @@ export function RunDetail() {
                           </span>
                         )}
                       </div>
-                      <SuggestHint
-                        suggestions={suggestFor(e.name, e.verified, catalog?.upgrades)}
-                      />
+                      <SuggestHint suggestions={suggestFromCatalog(e.name, catalog?.upgrades)} />
                     </li>
                   ))}
                 </ol>
@@ -344,9 +329,7 @@ export function RunDetail() {
                       <td className="px-4 py-2 text-slate-200">
                         {r.name}
                         <CatalogBadges verified={r.verified} />
-                        <SuggestHint
-                          suggestions={suggestFor(r.name, r.verified, catalog?.rewards)}
-                        />
+                        <SuggestHint suggestions={suggestFromCatalog(r.name, catalog?.rewards)} />
                       </td>
                       <td className="px-4 py-2 text-right font-mono">{r.count}</td>
                       <td className="px-4 py-2 text-right font-mono">

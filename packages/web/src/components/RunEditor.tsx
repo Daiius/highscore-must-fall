@@ -5,15 +5,14 @@
 // （スクショは呼び出し側が右の固定カラムに置く）。行ごとに:
 //   - 未検証 / OU バッジを出す（名前を変えるまでは元のカタログエントリの属性が有効）。
 //   - 変更した行にだけ「元: <値>」と「戻す」を出す。1 字違いを直すつもりで消してしまっても復帰できる。
-//   - verified カタログに近い名前があれば「もしかして」を出す。入力中の値に対して都度計算するので、
+//   - カタログに近い名前があれば「もしかして」を出す。入力中の値に対して都度計算するので、
 //     手で打ち間違えた場合もその場で気づける。クリックで入力欄へ差し込む。
 
 import { useState } from 'react'
-import { type NameSuggestion, suggestSimilarNames } from 'shared'
 import { client } from '../api'
 import { callApi } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
-import type { VerifiedCatalog } from '../lib/catalog'
+import { type Catalog, type CatalogSuggestion, suggestFromCatalog } from '../lib/catalog'
 import {
   buildRecord,
   type EditorState,
@@ -38,7 +37,7 @@ import { SuggestHint } from './SuggestHint'
 const INPUT_CLASS =
   'rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-200 text-sm focus:border-indigo-500 focus:outline-none'
 
-const NO_SUGGESTIONS: NameSuggestion[] = []
+const NO_SUGGESTIONS: CatalogSuggestion[] = []
 
 export function RunEditor({
   run,
@@ -47,8 +46,8 @@ export function RunEditor({
   onSaved,
 }: {
   run: RunDetailData
-  /** 提案先の verified カタログ名。取得前は null（提案を出さないだけ）。 */
-  catalog: VerifiedCatalog | null
+  /** 提案先のカタログ名（未検証も含む全件）。取得前は null（提案を出さないだけ）。 */
+  catalog: Catalog | null
   onCancel: () => void
   /** 保存成功。warning（要確認）が残ることがあるので呼び出し側へ渡す。 */
   onSaved: (issues: Issue[]) => void
@@ -61,17 +60,17 @@ export function RunEditor({
 
   // 入力のたびに全行 × カタログ全件を舐める計算。メモ化は React Compiler に任せる
   // （手書きの useMemo は置かない。.claude/rules/react.md）。
-  const historySuggestions = new Map<string, NameSuggestion[]>()
-  const rewardSuggestions = new Map<string, NameSuggestion[]>()
+  const historySuggestions = new Map<string, CatalogSuggestion[]>()
+  const rewardSuggestions = new Map<string, CatalogSuggestion[]>()
   if (catalog) {
     for (const row of state.history) {
       // reroll の flavor はカタログ対象外。
       if (row.type === 'upgrade') {
-        historySuggestions.set(row.key, suggestSimilarNames(row.name, catalog.upgrades))
+        historySuggestions.set(row.key, suggestFromCatalog(row.name, catalog.upgrades))
       }
     }
     for (const row of state.rewards) {
-      rewardSuggestions.set(row.key, suggestSimilarNames(row.name, catalog.rewards))
+      rewardSuggestions.set(row.key, suggestFromCatalog(row.name, catalog.rewards))
     }
   }
 

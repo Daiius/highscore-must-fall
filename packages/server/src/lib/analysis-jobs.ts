@@ -8,19 +8,8 @@
 // ジョブは run と 1:1 の「現在の運用状態」。失敗の自動リトライはしない（prd/04 §9.5）。
 
 import { randomUUID } from 'node:crypto'
-import {
-  analysisJob,
-  catalogAlias,
-  db,
-  rewardCatalog,
-  rewardEntry,
-  run,
-  runImage,
-  runPayload,
-  upgradeCatalog,
-  upgradeEntry,
-} from 'database'
-import { and, asc, eq, gt, inArray, lt } from 'drizzle-orm'
+import { analysisJob, db, rewardEntry, run, runImage, runPayload, upgradeEntry } from 'database'
+import { and, asc, eq, gt, lt } from 'drizzle-orm'
 import {
   type ExtractionSection,
   extractionToFlatRecord,
@@ -246,57 +235,18 @@ function hasAllSections(resolved: Map<string, ExtractionSection>): boolean {
   return sections.has('result') && sections.has('upgrade_history') && sections.has('reward_ledger')
 }
 
-/** 名前群がすべて verified カタログ（正規キー一致 or 別名経由）に解決できるか。 */
-async function allNamesVerified(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  upgradeKeys: string[],
-  rewardKeys: string[],
-): Promise<boolean> {
-  const verifiedKeys = async (
-    keys: string[],
-    catalog: typeof upgradeCatalog | typeof rewardCatalog,
-    kind: 'upgrade' | 'reward',
-  ): Promise<Set<string>> => {
-    if (keys.length === 0) return new Set()
-    const aliasTarget =
-      kind === 'upgrade' ? catalogAlias.upgradeCatalogId : catalogAlias.rewardCatalogId
-    const [direct, viaAlias] = await Promise.all([
-      tx
-        .select({ key: catalog.canonicalKey })
-        .from(catalog)
-        .where(and(inArray(catalog.canonicalKey, keys), eq(catalog.verified, true))),
-      tx
-        .select({ key: catalogAlias.aliasKey })
-        .from(catalogAlias)
-        .innerJoin(catalog, eq(aliasTarget, catalog.id))
-        .where(
-          and(
-            eq(catalogAlias.catalogKind, kind),
-            inArray(catalogAlias.aliasKey, keys),
-            eq(catalog.verified, true),
-          ),
-        ),
-    ])
-    return new Set([...direct.map((r) => r.key), ...viaAlias.map((r) => r.key)])
-  }
-
-  const [upgradeVerified, rewardVerified] = await Promise.all([
-    verifiedKeys(upgradeKeys, upgradeCatalog, 'upgrade'),
-    verifiedKeys(rewardKeys, rewardCatalog, 'reward'),
-  ])
-  return (
-    upgradeKeys.every((k) => upgradeVerified.has(k)) &&
-    rewardKeys.every((k) => rewardVerified.has(k))
-  )
-}
-
 /**
  * worker の解析結果を run へ反映する。
  *   1. 抽出（フラット形）→ 正規変換 → shared 検証。error があればジョブを failed にする
  *      （幻覚値の混入より欠落を明示する方針。部分ドラフト保存は緩い draft 契約の導入後）。
  *   2. run コア列・payload・エントリを反映し、run_image.section を埋め戻す。
- *   3. 自動確定ゲート: error なし（1 で保証）・warning なし・全 section 揃い・全名称 verified
- *      をすべて満たすときだけ confirmed。それ以外は draft（人間がレビューして確定）。
+ *   3. 自動確定ゲート: error なし（1 で保証）・warning なし・全 section 揃い をすべて満たすときだけ
+ *      confirmed。それ以外は draft（人間がレビューして確定）。
+ *
+ * ゲートに**名前の条件は置かない**（prd/08 §9.1）。カタログ未登録＝未検証の名前を要求すると、
+ * ゲーム更新から seed が追いつくまでの数週間、新要素を含む run が永久に draft のまま溜まる
+ * ＝自動解析がいちばん要る時期に自動確定が死ぬ。数値の誤読は分析を直撃するので数値系の条件は残すが、
+ * 名前の誤読は系統構成のバーが1本ズレる程度で、後から訂正すれば分析に反映される（prd/06 §1.1）。
  */
 export async function completeJob(
   runId: string,
@@ -381,17 +331,8 @@ export async function completeJob(
         new Set(runImageRows.map((r) => r.id)),
       )
 
-      // 自動確定ゲート（unverified 自動登録より先に判定する）。
-      const upgradeKeys = [
-        ...new Set(
-          record.upgrade_history.flatMap((e) => (e.entry_type === 'upgrade' ? [e.name] : [])),
-        ),
-      ]
-      const rewardKeys = [...new Set(record.reward_ledger.map((r) => r.name))]
-      const autoConfirm =
-        warnings.length === 0 &&
-        hasAllSections(resolvedSections) &&
-        (await allNamesVerified(tx, upgradeKeys, rewardKeys))
+      // 自動確定ゲート（数値系のみ。名前の条件は置かない）。
+      const autoConfirm = warnings.length === 0 && hasAllSections(resolvedSections)
       const nextStatus: 'draft' | 'confirmed' = autoConfirm ? 'confirmed' : 'draft'
 
       // run コア列を反映（played_at はアップロード時刻のまま。手動上書きは既存導線）。
