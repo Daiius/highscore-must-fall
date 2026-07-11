@@ -28,5 +28,8 @@ export const client: Pool = createPool({
 
 export const db = drizzle({ client, relations })
 
+// カタログ名称リストの正典（DB 非依存）。server が「この行は seed 由来か」を判定するのに使う
+// （seed の名前は消せない＝孤児掃除・マージの対象外。prd/08 §7）。
+export * from './catalog-data'
 export { relations } from './relations'
 export * from './schema'

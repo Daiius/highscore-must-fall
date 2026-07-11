@@ -49,6 +49,14 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 /**
  * upgrade 名（正規形）を upgrade_catalog の id へ解決する。
  * 既知（canonical_key 一致）→ 別名（catalog_alias）→ 無ければ unverified で自動登録。
+ *
+ * **既知・別名の探索はロック読み取り**（`FOR UPDATE`）で行う。カタログ行は管理 API のマージ・
+ * 孤児削除で消えうるため（catalog-admin.ts）、非ロック読みだと 2 つ壊れる:
+ *   1. 見つけた id が、コミット前にマージで削除され、後続の *_entry 挿入が FK 違反で落ちる。
+ *   2. REPEATABLE READ の非ロック読みはトランザクション開始時のスナップショットを見るため、
+ *      直前に commit されたマージの alias が見えず、統合先へ名寄せできない。
+ * ロック読みは常に最新のコミット済み版を読み、行を掴んでいる間は削除もブロックする
+ * （＝マージ側の `FOR UPDATE` が待つ。どちらが先でも整合する）。
  */
 async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Promise<string> {
   const existing = await tx
@@ -56,14 +64,32 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
     .from(upgradeCatalog)
     .where(eq(upgradeCatalog.canonicalKey, key))
     .limit(1)
+    .for('update')
   if (existing[0]) return existing[0].id
 
+  // alias 解決。**統合先のカタログ行もこの場でロックする** — alias が指す先自体がさらにマージ・
+  // 孤児削除されうるため、ロックせずに entry 挿入へ進むと FK 違反で落ちる（HSF-17D3E52C）。
+  // 統合先が消えていた（さらにマージされた）場合は alias が張り替わっているので、解決をやり直す。
   const alias = await tx
     .select({ id: catalogAlias.upgradeCatalogId })
     .from(catalogAlias)
     .where(and(eq(catalogAlias.catalogKind, 'upgrade'), eq(catalogAlias.aliasKey, key)))
     .limit(1)
-  if (alias[0]?.id) return alias[0].id
+    .for('update')
+  const aliasTargetId = alias[0]?.id
+  if (aliasTargetId) {
+    const target = await tx
+      .select({ id: upgradeCatalog.id })
+      .from(upgradeCatalog)
+      .where(eq(upgradeCatalog.id, aliasTargetId))
+      .limit(1)
+      .for('update')
+    const targetId = target[0]?.id
+    // alias 行は統合先への FK を cascade で持つので、統合先が消えていれば alias も消えている
+    // （＝ここには来ない）。来たらデータが壊れているので、誤読名を再登録せず落とす。
+    if (!targetId) throw new Error(`catalog_alias points at a missing upgrade_catalog: ${key}`)
+    return targetId
+  }
 
   // 原子的な insert-or-get。同一未知名を含む run が同時保存されても一意制約違反で落とさない。
   // 競合時の set は canonical_key 自身への no-op（既存の display_name/first_seen を壊さない）。
@@ -91,21 +117,35 @@ async function resolveUpgradeCatalogId(tx: Tx, key: string, runId: string): Prom
   return id
 }
 
-/** reward 名（正規形）を reward_catalog の id へ解決する（upgrade と同じ順序）。 */
+/** reward 名（正規形）を reward_catalog の id へ解決する（upgrade と同じ順序・同じロック方針）。 */
 async function resolveRewardCatalogId(tx: Tx, key: string, runId: string): Promise<string> {
   const existing = await tx
     .select({ id: rewardCatalog.id })
     .from(rewardCatalog)
     .where(eq(rewardCatalog.canonicalKey, key))
     .limit(1)
+    .for('update')
   if (existing[0]) return existing[0].id
 
+  // alias 解決。統合先のカタログ行もこの場でロックする（upgrade 側と同じ理由。HSF-17D3E52C）。
   const alias = await tx
     .select({ id: catalogAlias.rewardCatalogId })
     .from(catalogAlias)
     .where(and(eq(catalogAlias.catalogKind, 'reward'), eq(catalogAlias.aliasKey, key)))
     .limit(1)
-  if (alias[0]?.id) return alias[0].id
+    .for('update')
+  const aliasTargetId = alias[0]?.id
+  if (aliasTargetId) {
+    const target = await tx
+      .select({ id: rewardCatalog.id })
+      .from(rewardCatalog)
+      .where(eq(rewardCatalog.id, aliasTargetId))
+      .limit(1)
+      .for('update')
+    const targetId = target[0]?.id
+    if (!targetId) throw new Error(`catalog_alias points at a missing reward_catalog: ${key}`)
+    return targetId
+  }
 
   // 原子的な insert-or-get（upgrade 側と同じ理由・同じ形）。
   await tx

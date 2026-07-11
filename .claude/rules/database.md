@@ -20,11 +20,8 @@
 
 ## カタログ
 
-> **⚠️ 未実装（2026-07-12 時点）**: **カタログ管理 UI・孤児掃除**は**まだコードに無い**。
-> **これらは後続 PR で実装する仕様であり、「既にそうなっている」前提で判断しないこと。**
-> 一方 **`verified` の機能ゲート外し**と **`evidence`**（`catalog-data.ts` の証拠フィールド・
-> `seed ⊆ samples` テスト）は**実装済み**。実装が追いつくたびにこの注記ごと更新する
-> （正典: [`prd/08-catalog-lifecycle.md`](../../prd/08-catalog-lifecycle.md)）。
+> 正典は [`prd/08-catalog-lifecycle.md`](../../prd/08-catalog-lifecycle.md)（`verified` の機能ゲート外し・
+> `evidence`・カタログ管理 UI・孤児掃除はいずれも実装済み。2026-07-12）。
 
 - `upgrade_catalog` / `reward_catalog`: 正規キー・表示名・`unverified` フラグ・エイリアス。
 - **カタログは投入時の選択母集団が基本**。unverified 自動登録はゲーム更新にリスト整備が追いつかない期間の補助（prd/01 §7）。

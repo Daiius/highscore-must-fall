@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { RootLayout } from './components/RootLayout'
 import { RequireAuth } from './lib/auth'
 import { Analysis } from './pages/Analysis'
+import { Catalog } from './pages/Catalog'
 import { Home } from './pages/Home'
 import { Import } from './pages/Import'
 import { RunDetail } from './pages/RunDetail'
@@ -42,12 +43,20 @@ const analysisRoute = createRoute({
   component: guarded(<Analysis />),
 })
 
+// カタログ管理は admin 限定（server 側も requireAdmin。ページ内でも role を見て弾く）。
+const catalogRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/catalog',
+  component: guarded(<Catalog />),
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   importRoute,
   runsRoute,
   runDetailRoute,
   analysisRoute,
+  catalogRoute,
 ])
 
 export const router = createRouter({ routeTree })

@@ -3,8 +3,8 @@
 > カタログ名の**正典は seed**（[`packages/database/src/catalog-data.ts`](../packages/database/src/catalog-data.ts)）。
 > 本文書はその周りの**手続き**を定める。名称リスト自体はここに重複記載しない。
 >
-> **実装状況（2026-07-12）**: §9.1 の**機能ゲート変更**と §3 の **`evidence`**（`seed ⊆ samples` テスト含む）は
-> **実装済み**。§6 の管理 UI・§7 の孤児掃除は**未実装**。
+> **実装状況（2026-07-12）**: 本文書の手続きは**すべて実装済み**（§3 `evidence` / §6 管理 UI /
+> §7 孤児掃除 / §9.1 機能ゲート）。未実装は §9.3（他プレイヤー画像の原典採用）のみ＝意図的に構想のまま。
 
 ## 1. 何を解く文書か
 
@@ -73,7 +73,9 @@ run 投入
 
 **`verified` への昇格は必ずコード変更（PR）を通す。UI から verify はできない**（§6 で UI に verify ボタンを置かない理由）。
 
-1. カタログ管理 UI で `unverified` 一覧を見る。`first_seen_run` へ辿って投入時の画像を確認する。
+1. カタログ管理 UI で `unverified` 一覧を見る。`first_seen_run` が**自分の run なら**辿って投入時の画像を確認する
+   （他ユーザーの run は admin でも見られない。§6・[05](./05-auth-and-privacy.md) §2。その場合は自分で
+   その名前が出る run を回して撮る＝§9.3 のオプトイン導線が入るまでの前提）。
 2. その名前が読める画像を **`prd/samples/<section>-<連番>.png` としてコミット**する
    （命名・撮影規約は [`samples/README.md`](./samples/README.md)）。
 3. `catalog-data.ts` に `evidence` を書く。系統が未登録なら [`shared/src/series.ts`](../packages/shared/src/series.ts) にも足す。
@@ -88,10 +90,13 @@ run 投入
 
 ## 6. カタログ管理 UI のスコープ
 
+**admin 限定**（`/catalog`・`GET|POST|DELETE /api/catalog/*` は `requireAdmin`）。カタログはグローバルで、
+マージ・孤児削除は**全 owner の run に効く**ため、中央（管理者）だけが行う（[03](./03-data-model.md) §5）。
+
 | やること | 内容 |
 |---|---|
 | 一覧 | upgrade / reward。フィルタ: `unverified` / 孤児（§7） / OU |
-| 各行の情報 | 参照数（`*_entry` の件数） / `first_seen_run` へのリンク / 類似候補（[`shared/src/suggest.ts`](../packages/shared/src/suggest.ts)） |
+| 各行の情報 | 参照数（`*_entry` の件数・全 owner 横断） / `first_seen_run` へのリンク（**自分の run のときだけ**。他ユーザーの run は「ある」ことだけ示す — run は owner スコープで admin でも見られない。[05](./05-auth-and-privacy.md) §2） / 類似候補（[`shared/src/suggest.ts`](../packages/shared/src/suggest.ts)） |
 | **マージ** | B を A に統合（配下 entry を付け替え・B の key を alias 登録・B を削除。[03](./03-data-model.md) §3.6） |
 | **孤児削除** | §7 の条件を満たす行のみ。**明示実行**（自動削除しない） |
 | seed スニペット | `{ name: 'X', evidence: null },` をコピーできる。開発者が `evidence` を埋めて PR にする |
