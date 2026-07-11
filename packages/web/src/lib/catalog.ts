@@ -36,11 +36,17 @@ export interface CatalogSuggestion extends NameSuggestion {
 const NO_SUGGESTIONS: CatalogSuggestion[] = []
 
 /**
- * name に近いカタログ名を返す。**verified なカタログ名と一致する入力には出さない**
- * （実在が裏取り済み＝誤読ではないため、ノイズになる）。未検証の名前・カタログに無い名前には出す。
+ * name に近いカタログ名を返す。**verified なカタログ名と一致する入力には出さない**。
+ * 未検証の名前・カタログに無い名前には出す。
  *
- * これは「表示するかどうか」の抑制であって、候補プールの制限ではない。新要素は unverified 登録
- * なので抑制されず、他の未検証名（先に投入した人の正しい読み）も候補に出る。
+ * 抑制が要るのは、**誤読名がカタログに溜まるから**である（unverified 自動登録）。抑制を外すと、
+ * 裏取り済みの正しい名前の行に、その名前の誤読が候補として並ぶ——`CLOSE SHAVE` に `CL0SE SHAVE`、
+ * `RATIONED WARHEADS` に `RATIONNED WARHEADS`（いずれも本番 DB に実在）。**正しい入力を誤読へ
+ * 逆誘導する**ことになり、誤読が溜まるほど悪化する。
+ *
+ * これは「提案を表示するか」の抑制であって、**候補プールの制限ではない**（prd/08 §9.1 が禁じるのは後者）。
+ * 新要素は unverified なので抑制されず、他の未検証名（先に投入した人の正しい読み）も候補に出る。
+ * ＝ゲーム更新直後に機能が死なない、という §9.1 の要件は満たす。
  */
 export function suggestFromCatalog(
   name: string | null,
