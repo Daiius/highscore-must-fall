@@ -276,7 +276,7 @@ Phase3 予定だった全自動投入ルートを前倒し。正典は [04-inges
   現状 `Analysis.tsx` のクライアント側計算で完結し、SQL で `GROUP BY series` する経路が無い。
   → server 側で系統別集計 API を作る時が来たら、その時に列を足す。
 - **`seed ⊆ series`**: seed の全名称は series.ts に分類を持つか、
-  `UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED` に明示登録する。逆方向は制約にしない
+  未分類リスト（`UPGRADE_SERIES_UNCLASSIFIED`）に明示登録する。逆方向は制約にしない
   （series はガイド由来の未観測名＝`OVERWEIGHT BUNDLES` や OU 20種を含む上位集合）。
 
 ### 文字色は系統を示さない（訂正）

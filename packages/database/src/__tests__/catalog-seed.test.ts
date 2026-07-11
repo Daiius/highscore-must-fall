@@ -1,10 +1,6 @@
 import { readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import {
-  normalizeName,
-  UPGRADE_SERIES_BY_NAME,
-  UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED,
-} from 'shared'
+import { normalizeName, UPGRADE_SERIES_BY_NAME, UPGRADE_SERIES_UNCLASSIFIED } from 'shared'
 import { describe, expect, it } from 'vitest'
 import { REWARDS, UPGRADES } from '../catalog-data'
 
@@ -64,16 +60,15 @@ describe('upgrade seed', () => {
     expect(wrongSection).toEqual([])
   })
 
-  it('seed の全名称は系統が付いているか、意図的に未分類と宣言されている', () => {
+  it('seed の全名称は系統が付いているか、未分類として宣言されている', () => {
     const orphans = UPGRADES.map((u) => u.name).filter(
-      (name) =>
-        !(name in UPGRADE_SERIES_BY_NAME) && !UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED.has(name),
+      (name) => !(name in UPGRADE_SERIES_BY_NAME) && !UPGRADE_SERIES_UNCLASSIFIED.has(name),
     )
     expect(orphans).toEqual([])
   })
 
-  it('意図的に未分類の名前に、うっかり系統が付いていない', () => {
-    for (const name of UPGRADE_SERIES_INTENTIONALLY_UNCLASSIFIED) {
+  it('未分類の名前に、うっかり系統が付いていない', () => {
+    for (const name of UPGRADE_SERIES_UNCLASSIFIED) {
       expect(UPGRADE_SERIES_BY_NAME[name]).toBeUndefined()
     }
   })
