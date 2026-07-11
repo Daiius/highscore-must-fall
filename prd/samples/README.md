@@ -22,9 +22,6 @@
 `catalog-data.ts` の各エントリはこの値で「どの画像と突合したか」を示し、テストが実在を強制する
 （[`prd/08-catalog-lifecycle.md`](../08-catalog-lifecycle.md) §3）。**ここにある画像を消す/改名するとテストが落ちる。**
 
-> **⚠️ 未実装（2026-07-11 時点）**: `evidence` フィールドと `seed ⊆ samples` テストは後続 PR。
-> 現行の `catalog-data.ts` は `verified: boolean` を直接持ち、画像との対応はコードに記録されていない。
-
 **3 section が揃っている必要はない。** カタログの `verified` 化だけが目的なら `contracts` か
 `rewards` の1枚で足りる（実際 sample-04 は `contracts-04.png` のみ）。
 run として投入・分析するなら3枚とも要る。
@@ -47,16 +44,20 @@ run として投入・分析するなら3枚とも要る。
 
 ## 3. 現在の充足状況
 
-| sample | 画像 | 由来 |
-|---|---|---|
-| 01 | `main-result` / `contracts` / `rewards` | upgrade 16種・reward 13種 |
-| 02 | `-02` 3枚 | coil 経路の run |
-| 03 | `-03` 3枚 | volley 経路の run |
-| 04 | `contracts-04` のみ | **blunderbuss 経路の run**。upgrade 8種を verified 化 |
+`evidence` として使われている画像と、そこを根拠にしている名前の数（`catalog-data.ts` が正典）。
+
+| sample | 画像 | 由来 | evidence 元になっている名前 |
+|---|---|---|---|
+| 01 | `main-result` / `contracts` / `rewards` | 最初の run | upgrade 16 / reward 13 |
+| 02 | `-02` 3枚 | coil 経路の run | upgrade 13 / reward 12 |
+| 03 | `-03` 3枚 | volley 経路の run | upgrade 13 / reward 3 |
+| 04 | `contracts-04` のみ | **blunderbuss 経路の run** | upgrade 9 |
+
+同じ名前が複数の画像に写ることはあるが、**`evidence` に書くのは1枚だけ**（根拠は1枚で足りる）。
 
 ## 4. 残っている空白と、埋めるための run 条件
 
-`verified: false` の名前は、**その名前が出る run を回して該当 section を撮る**ことで昇格できる。
+`evidence: null`（＝未検証）の名前は、**その名前が出る run を回して該当 section を撮る**ことで昇格できる。
 経路ごとにまとめて回収できるので、狙う順に並べる。
 
 ### 主砲: basilisk 経路を1本（最大の回収効率）
