@@ -19,10 +19,7 @@ COPY .githooks .githooks
 
 RUN pnpm install --frozen-lockfile || pnpm install
 
-# ソース本体。起動後の変更は docker compose watch の sync が送る（bind mount は使わない）が、
-# **起動時点のソースはこの COPY で焼かれたもの**になる。したがってイメージを再ビルドせずに起動すると、
-# 前回ビルド時の古いソースでコンテナが動く（watch は起動後の編集しか同期しない）。
-# → `pnpm dev` は `--build` 付きで起動する（package.json）。依存レイヤはキャッシュが効くので速い。
+# ソース本体は docker compose watch の sync で同期される（bind mount は使わない）
 COPY . .
 
 EXPOSE 4000 5173
