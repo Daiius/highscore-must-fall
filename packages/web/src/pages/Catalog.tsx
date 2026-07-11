@@ -206,7 +206,9 @@ export function Catalog() {
               {row.inSeed && <Badge tone="slate">seed</Badge>}
               {row.orphan && <Badge tone="red">孤児</Badge>}
               <span className="text-slate-500 text-xs">参照 {row.refCount} 件</span>
-              {row.firstSeenRunId && (
+              {/* 初出が他ユーザーの run なら辿れない（run は owner スコープ。prd/05 §2）。
+                  押せば必ず 404 になるリンクは出さず、「ある」ことだけ伝える。 */}
+              {row.firstSeenRunId ? (
                 <Link
                   to="/runs/$id"
                   params={{ id: row.firstSeenRunId }}
@@ -214,6 +216,15 @@ export function Catalog() {
                 >
                   初出 run
                 </Link>
+              ) : (
+                row.firstSeenRunExists && (
+                  <span
+                    className="text-slate-600 text-xs"
+                    title="初出 run は他のユーザーのものです（run は投入者本人しか見られません）。"
+                  >
+                    初出 run（他ユーザー）
+                  </span>
+                )
               )}
               {row.aliases.length > 0 && (
                 <span className="text-slate-500 text-xs">別名: {row.aliases.join(', ')}</span>

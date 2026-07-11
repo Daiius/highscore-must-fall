@@ -56,6 +56,27 @@ export function isOrphan(row: OrphanCandidate, kind: CatalogKind): boolean {
   )
 }
 
+/**
+ * 初出 run へ辿れるか。**カタログはグローバルなので、初出が他ユーザーの run であることは普通に起こる**
+ * （未知名は誰の投入でも自動登録される。prd/03 §5）。一方 run は owner スコープで、admin でも他人の
+ * run 詳細は見られない（prd/05 §2。画像もそこにぶら下がる）。
+ *
+ * そこで **id を出すのは自分の run のときだけ**にし、他人の run は「ある」ことだけを伝える。
+ * 到達できないリンクを出さない（押せば必ず 404 になる導線を置かない）ためであり、admin に他人の run を
+ * 覗かせるための抜け道も作らない。他プレイヤーの画像を根拠に使う道は、オプトインで恒久原典
+ * （`prd/samples/`）へ写し取る形でのみ開く（prd/08 §9.3・未実装）。
+ */
+export function firstSeenLink(
+  firstSeenRunId: string | null,
+  firstSeenOwnerId: string | null,
+  viewerId: string,
+): { firstSeenRunId: string | null; firstSeenRunExists: boolean } {
+  return {
+    firstSeenRunId: firstSeenOwnerId === viewerId ? firstSeenRunId : null,
+    firstSeenRunExists: firstSeenRunId !== null,
+  }
+}
+
 export type CatalogMutationError =
   | 'not_found'
   | 'same_entry'

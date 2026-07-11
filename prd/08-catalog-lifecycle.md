@@ -73,7 +73,9 @@ run 投入
 
 **`verified` への昇格は必ずコード変更（PR）を通す。UI から verify はできない**（§6 で UI に verify ボタンを置かない理由）。
 
-1. カタログ管理 UI で `unverified` 一覧を見る。`first_seen_run` へ辿って投入時の画像を確認する。
+1. カタログ管理 UI で `unverified` 一覧を見る。`first_seen_run` が**自分の run なら**辿って投入時の画像を確認する
+   （他ユーザーの run は admin でも見られない。§6・[05](./05-auth-and-privacy.md) §2。その場合は自分で
+   その名前が出る run を回して撮る＝§9.3 のオプトイン導線が入るまでの前提）。
 2. その名前が読める画像を **`prd/samples/<section>-<連番>.png` としてコミット**する
    （命名・撮影規約は [`samples/README.md`](./samples/README.md)）。
 3. `catalog-data.ts` に `evidence` を書く。系統が未登録なら [`shared/src/series.ts`](../packages/shared/src/series.ts) にも足す。
@@ -94,7 +96,7 @@ run 投入
 | やること | 内容 |
 |---|---|
 | 一覧 | upgrade / reward。フィルタ: `unverified` / 孤児（§7） / OU |
-| 各行の情報 | 参照数（`*_entry` の件数） / `first_seen_run` へのリンク / 類似候補（[`shared/src/suggest.ts`](../packages/shared/src/suggest.ts)） |
+| 各行の情報 | 参照数（`*_entry` の件数・全 owner 横断） / `first_seen_run` へのリンク（**自分の run のときだけ**。他ユーザーの run は「ある」ことだけ示す — run は owner スコープで admin でも見られない。[05](./05-auth-and-privacy.md) §2） / 類似候補（[`shared/src/suggest.ts`](../packages/shared/src/suggest.ts)） |
 | **マージ** | B を A に統合（配下 entry を付け替え・B の key を alias 登録・B を削除。[03](./03-data-model.md) §3.6） |
 | **孤児削除** | §7 の条件を満たす行のみ。**明示実行**（自動削除しない） |
 | seed スニペット | `{ name: 'X', evidence: null },` をコピーできる。開発者が `evidence` を埋めて PR にする |

@@ -16,7 +16,10 @@ export interface ManagedCatalogRow {
   displayName: string
   kind: 'contract' | 'opportunity_upgrade' | null
   verified: boolean
+  /** 初出 run。**自分の run のときだけ id が入る**（他 owner の run へは辿れない。prd/05 §2）。 */
   firstSeenRunId: string | null
+  /** 初出 run が存在するか（他ユーザーの run でも true。閲覧はできない）。 */
+  firstSeenRunExists: boolean
   refCount: number
   aliases: string[]
   inSeed: boolean

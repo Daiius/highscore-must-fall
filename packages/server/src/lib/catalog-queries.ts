@@ -6,11 +6,12 @@ import {
   db,
   rewardCatalog,
   rewardEntry,
+  run,
   upgradeCatalog,
   upgradeEntry,
 } from 'database'
-import { asc, count, isNotNull } from 'drizzle-orm'
-import { type CatalogKind, isOrphan, SEED_KEYS } from './catalog-admin'
+import { asc, count, eq, isNotNull } from 'drizzle-orm'
+import { type CatalogKind, firstSeenLink, isOrphan, SEED_KEYS } from './catalog-admin'
 
 /** upgrade_catalog 一覧（正規キー・表示名・kind・verified）。 */
 export async function listUpgradeCatalog() {
@@ -47,8 +48,13 @@ export interface ManagedCatalogRow {
   /** upgrade のみ。reward は null。 */
   kind: 'contract' | 'opportunity_upgrade' | null
   verified: boolean
-  /** 初出 run（run 削除で null に落ちる）。 */
+  /**
+   * 初出 run。**閲覧者自身の run のときだけ id が入る**（他 owner の run へは辿れない。prd/05 §2）。
+   * カタログはグローバルなので、初出が他ユーザーの run であることは普通に起こる。
+   */
   firstSeenRunId: string | null
+  /** 初出 run が存在するか（閲覧できなくても「ある」ことは分かる。run 削除で false）。 */
+  firstSeenRunExists: boolean
   /** *_entry からの参照数（全 owner 横断。カタログはグローバルなため）。 */
   refCount: number
   /** この行を統合先とする別名（過去にマージした旧名）。 */
@@ -67,7 +73,7 @@ export interface ManagedCatalogRow {
  * 及ぶ以上、「これは誰かが使っているか」は owner を跨いで数えないと判定にならない
  * （admin 限定ルート。prd/03 §5）。
  */
-export async function listCatalogForManagement(): Promise<{
+export async function listCatalogForManagement(viewerId: string): Promise<{
   upgrades: ManagedCatalogRow[]
   rewards: ManagedCatalogRow[]
 }> {
@@ -80,8 +86,10 @@ export async function listCatalogForManagement(): Promise<{
         kind: upgradeCatalog.kind,
         verified: upgradeCatalog.verified,
         firstSeenRunId: upgradeCatalog.firstSeenRunId,
+        firstSeenOwnerId: run.ownerId,
       })
       .from(upgradeCatalog)
+      .leftJoin(run, eq(upgradeCatalog.firstSeenRunId, run.id))
       .orderBy(asc(upgradeCatalog.displayName)),
     db
       .select({
@@ -90,8 +98,10 @@ export async function listCatalogForManagement(): Promise<{
         displayName: rewardCatalog.displayName,
         verified: rewardCatalog.verified,
         firstSeenRunId: rewardCatalog.firstSeenRunId,
+        firstSeenOwnerId: run.ownerId,
       })
       .from(rewardCatalog)
+      .leftJoin(run, eq(rewardCatalog.firstSeenRunId, run.id))
       .orderBy(asc(rewardCatalog.displayName)),
     db
       .select({ catalogId: upgradeEntry.upgradeCatalogId, refCount: count() })
@@ -137,6 +147,7 @@ export async function listCatalogForManagement(): Promise<{
       displayName: string
       verified: boolean
       firstSeenRunId: string | null
+      firstSeenOwnerId: string | null
       kind?: 'contract' | 'opportunity_upgrade'
     },
     kind: CatalogKind,
@@ -151,7 +162,7 @@ export async function listCatalogForManagement(): Promise<{
       displayName: row.displayName,
       kind: row.kind ?? null,
       verified: row.verified,
-      firstSeenRunId: row.firstSeenRunId,
+      ...firstSeenLink(row.firstSeenRunId, row.firstSeenOwnerId, viewerId),
       refCount,
       aliases: rowAliases,
       inSeed: SEED_KEYS[kind].has(row.canonicalKey),

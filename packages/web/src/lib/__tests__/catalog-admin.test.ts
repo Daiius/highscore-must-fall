@@ -14,6 +14,7 @@ const row = (over: Partial<ManagedCatalogRow>): ManagedCatalogRow => ({
   kind: 'contract',
   verified: false,
   firstSeenRunId: null,
+  firstSeenRunExists: false,
   refCount: 0,
   aliases: [],
   inSeed: false,

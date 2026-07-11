@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOrphan, planRewardMerge, SEED_KEYS } from '../catalog-admin'
+import { firstSeenLink, isOrphan, planRewardMerge, SEED_KEYS } from '../catalog-admin'
 
 // 孤児 = 誤読の残骸（prd/08 §7）。4条件をすべて満たすものだけが削除対象。
 // 1つでも欠ければ削除しない — 削除は取り消せないので、判定は保守側に倒す。
@@ -93,6 +93,30 @@ describe('planRewardMerge', () => {
     )
     expect(plan.updates).toEqual([{ id: 'a1', count: 2, points: 40 }])
     expect(plan.deletes).toEqual(['s1'])
+  })
+})
+
+// カタログはグローバルだが run は owner スコープ。admin でも他人の run 詳細は見られない（prd/05 §2）。
+describe('firstSeenLink', () => {
+  it('自分の run なら辿れる', () => {
+    expect(firstSeenLink('run1', 'me', 'me')).toEqual({
+      firstSeenRunId: 'run1',
+      firstSeenRunExists: true,
+    })
+  })
+
+  it('他ユーザーの run は id を出さない（押せば必ず 404 になる導線を置かない）', () => {
+    expect(firstSeenLink('run1', 'someone-else', 'me')).toEqual({
+      firstSeenRunId: null,
+      firstSeenRunExists: true, // 「ある」ことは伝える
+    })
+  })
+
+  it('初出 run が消えている（run 削除で SET NULL）なら存在しない', () => {
+    expect(firstSeenLink(null, null, 'me')).toEqual({
+      firstSeenRunId: null,
+      firstSeenRunExists: false,
+    })
   })
 })
 

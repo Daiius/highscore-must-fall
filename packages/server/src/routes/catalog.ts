@@ -61,7 +61,10 @@ export const catalogRoute = new Hono<AppEnv>()
     return c.json({ upgrades, rewards })
   })
   .get('/manage', requireAdmin, async (c) => {
-    return c.json(await listCatalogForManagement())
+    const viewer = c.get('user')
+    if (!viewer) return c.json({ error: 'authentication required' }, 401)
+    // 初出 run のリンクは viewer 自身の run に限る（admin でも他人の run は見られない。prd/05 §2）。
+    return c.json(await listCatalogForManagement(viewer.id))
   })
   .post('/merge', requireAdmin, zValidator('json', mergeBody), async (c) => {
     const { kind, sourceId, targetId } = c.req.valid('json')
