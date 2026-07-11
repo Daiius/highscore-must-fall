@@ -3,8 +3,9 @@
 // ここで**候補のサジェストにだけ**使う（保存キーには使わない）。
 // → .claude/rules/schema-and-contract.md §名寄せ「確定前レビューで類似候補としてサジェスト → 人手統合」
 //
-// 提案先は verified なカタログ名に限る。unverified 同士（誤読 → 別の誤読）を提案しても意味がないため、
-// 呼び出し側が verified だけを candidates に渡すこと。
+// 候補プールは **全カタログ名**（verified で絞らない。prd/08 §9.1）。ゲーム更新直後の新要素は
+// unverified で自動登録されるだけなので、verified に絞ると新要素が候補から消え、似た旧名へ誤誘導する。
+// 未検証の候補を出す責任は呼び出し側の表示（「未検証」バッジ）が持つ。
 
 import { normalizeName } from './normalize'
 
@@ -80,11 +81,15 @@ export interface NameSuggestion {
 }
 
 /**
- * input に近い candidates を確度順に返す。完全一致する候補があれば「誤読ではない」として空を返す。
+ * input に近い candidates を確度順に返す。
  *
  * 採用条件は 2 つで、どちらかを満たせば候補にする:
  *   1. homoglyph を畳み込むと一致する（`CL0SE SHAVE` → `CLOSE SHAVE`）
  *   2. 編集距離が maxDistanceFor 以内（`RATIONNED WARHEADS` → `RATIONED WARHEADS`）
+ *
+ * **input と正規形が一致する候補は「自分自身」として除外する**（誤読名も unverified で自動登録され、
+ * 候補プール＝全カタログ名に自分自身が含まれるため）。したがって「この名前は正しいので提案不要」の
+ * 判断はここではできない。**呼び出し側が抑制すること**（web は verified 名との一致で抑制する）。
  *
  * 単語の重なり（`INCREASE PRODUCTION` と `INCREASE FIRE RATE`）は意図的に見ない。
  * 誤読ではなく別物であることが多く、提案の信頼性を落とすため。
@@ -97,12 +102,10 @@ export function suggestSimilarNames(
   const key = normalizeName(input)
   if (key.length === 0) return []
 
-  const normalized = candidates.map(normalizeName)
-  if (normalized.includes(key)) return []
-
   const skeleton = homoglyphSkeleton(key)
   const found: NameSuggestion[] = []
-  for (const candidate of normalized) {
+  for (const candidate of candidates.map(normalizeName)) {
+    if (candidate === key) continue // 自分自身（カタログに載っている入力そのもの）。
     const homoglyph = homoglyphSkeleton(candidate) === skeleton
     const limitForPair = maxDistanceFor(Math.max(key.length, candidate.length))
     // 長さが離れすぎていれば距離も必ず超える（重い距離計算を避ける前フィルタ）。
