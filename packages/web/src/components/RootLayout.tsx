@@ -28,6 +28,12 @@ export function RootLayout() {
               <Link to="/analysis" className={navLinkClass}>
                 分析
               </Link>
+              {/* カタログはグローバル。マージ・孤児削除は全 owner に効くので admin だけに出す。 */}
+              {user.role === 'admin' && (
+                <Link to="/catalog" className={navLinkClass}>
+                  カタログ
+                </Link>
+              )}
             </nav>
           )}
           <div className="flex items-center gap-3">
