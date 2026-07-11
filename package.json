@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "docker compose up --watch",
+    "dev": "docker compose up --watch --build",
     "down": "docker compose down",
     "dev:web": "pnpm --filter web dev",
     "dev:server": "pnpm --filter server dev",
