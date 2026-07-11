@@ -35,6 +35,7 @@ import {
 import { client } from '../api'
 import { callApi } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
+import { summarizeVocabulary, type VocabularySummary } from '../lib/vocabulary'
 
 interface TimelineRunMeta {
   runId: string
@@ -59,7 +60,12 @@ interface TimelinePoint {
 interface Summary {
   stats: { count: number; best: number; avg: number }
   scoreTrend: { playedAt: string; finalScore: number | null }[]
-  frequency: { catalogId: string | null; name: string | null; count: number }[]
+  frequency: {
+    catalogId: string | null
+    name: string | null
+    verified: boolean | null
+    count: number
+  }[]
   timelineRuns: TimelineRunMeta[]
   timeline: TimelineRow[]
   timelineRunLimit: number
@@ -324,6 +330,8 @@ export function Analysis() {
         <Stat label="ベストスコア" value={summary.stats.best.toLocaleString()} />
       </div>
 
+      <VocabularyNote summary={summarizeVocabulary(summary.frequency)} />
+
       <ChartCard title="スコア散布図">
         <ResponsiveContainer width="100%" height={260}>
           <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
@@ -500,6 +508,26 @@ export function Analysis() {
         )}
       </section>
     </div>
+  )
+}
+
+/**
+ * 未検証・未分類の語句が混じっていることの控えめな注記（prd/06 §1.1）。
+ * **除外していない**ことを明示するのが趣旨で、警告ではない（誤読が1語混ざっても、
+ * 系統構成のバーが1本ズレるだけでゲームのランダム性による分散に埋もれる）。
+ * どちらも0なら何も出さない。
+ */
+function VocabularyNote({ summary }: { summary: VocabularySummary }) {
+  if (summary.unverified === 0 && summary.unclassified === 0) return null
+  const parts = [
+    summary.unverified > 0 ? `未検証 ${summary.unverified} 件` : null,
+    summary.unclassified > 0 ? `系統が未分類 ${summary.unclassified} 件` : null,
+  ].filter((p): p is string => p != null)
+  return (
+    <p className="text-slate-500 text-xs">
+      集計に含まれるアップグレード名 {summary.total} 件のうち、{parts.join('・')}。
+      いずれも除外せず集計しています。カタログを直せば次の描画から反映されます。
+    </p>
   )
 }
 
