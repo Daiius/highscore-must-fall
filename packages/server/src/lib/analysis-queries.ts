@@ -3,7 +3,8 @@
 //
 //   - scoreTrend : played_at 昇順の (played_at, final_score)。
 //   - stats      : 確定ラン数 / ベスト / 平均。
-//   - frequency  : upgrade catalog ごとの取得回数（表示名付き。タイムラインの行順に使用）。
+//   - frequency  : upgrade catalog ごとの取得回数（表示名・verified 付き。タイムラインの行順と、
+//                  「未検証を N 件含む」注記に使用）。
 //   - timelineRuns / timeline : 直近 TIMELINE_RUN_LIMIT 件の確定 run のメタ（played_at 昇順・
 //                  スコア付き。取得ゼロの run も含む）と、upgrade 取得のフラット行
 //                  （run×catalog×week。取得タイムライン用）。
@@ -46,13 +47,15 @@ export async function getAnalysisSummary(ownerId: string) {
       .select({
         catalogId: upgradeEntry.upgradeCatalogId,
         name: upgradeCatalog.displayName,
+        // verified は表示専用（集計は絞らない）。UI の「未検証を N 件含む」注記に使う。prd/06 §1.1。
+        verified: upgradeCatalog.verified,
         count: count(),
       })
       .from(upgradeEntry)
       .innerJoin(run, eq(upgradeEntry.runId, run.id))
       .leftJoin(upgradeCatalog, eq(upgradeEntry.upgradeCatalogId, upgradeCatalog.id))
       .where(upgradeCond)
-      .groupBy(upgradeEntry.upgradeCatalogId, upgradeCatalog.displayName),
+      .groupBy(upgradeEntry.upgradeCatalogId, upgradeCatalog.displayName, upgradeCatalog.verified),
   ])
 
   // 取得タイムライン: 直近 TIMELINE_RUN_LIMIT 件の確定 run。
