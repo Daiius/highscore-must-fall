@@ -114,11 +114,12 @@
   追いつかない期間の**補助**であり、常用経路ではない（新名称は他プレイヤーの攻略情報の方が
   早く出回るため、リスト整備が追走する前提）。
 - **名称リストの正典は seed**（[`packages/database/src/catalog-data.ts`](../packages/database/src/catalog-data.ts)）。
-  本文書にはリストを重複記載しない。seed 内の区分:
-  - **verified** — スクショ一次情報（[§8 samples/](./samples/)）と突合済み。
+  本文書にはリストを重複記載しない。seed 内の区分は `evidence`（突合した一次情報画像）の有無で決まる:
+  - **verified**（`evidence` あり） — スクショ一次情報（[§8 samples/](./samples/)）と突合済み。
     sample-01〜04 由来: アップグレード 51 種 / リワード 28 種（2026-07-11 時点）。
-  - **仮登録（unverified）** — スクショ未検証。読み取りミスが疑われる名称は
+  - **仮登録（unverified）**（`evidence: null`） — スクショ未検証。読み取りミスが疑われる名称は
     seed に入れない（ローカルの疑義リストで管理し、検証後に昇格）。
+- **昇格・掃除・管理 UI の手続きは [08-catalog-lifecycle.md](./08-catalog-lifecycle.md)**（正典）。
 - **どのスクショを撮れば、どの未検証名が verified 化できるか**は
   [`prd/samples/README.md`](./samples/README.md) に一覧化している。
 - リロール由来の灰色テキスト（`DIGITIZE CONSCIOUSNESS` / `WELCOMING CEREMONY`）は

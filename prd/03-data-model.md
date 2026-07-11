@@ -130,11 +130,16 @@ RewardEntry { name: string, count: int, points: int }
 | `id` | string(PK) | |
 | `canonical_key` | string(unique) | 正規化キー（大文字化・トリム・記号正規化。名寄せの照合キー） |
 | `display_name` | string | 表示名 |
-| `verified` | bool | 既定 false（unverified で自動登録） |
-| `first_seen_run_id` | string? | 初出 run |
+| `verified` | bool | 既定 false（unverified で自動登録）。**seed の `evidence` の投影**（下記） |
+| `first_seen_run_id` | string? | 初出 run。管理 UI から「その名前が初めて出た run の画像」へ辿るために読む |
 | `created_at` | datetime | |
 
 > リッチ属性（カテゴリ・色・レアリティ）は Phase2（[06](./06-analysis.md)）。
+>
+> **`verified` の正典は DB ではなく seed。** どの一次情報画像と突合したか（`evidence`）は
+> [`catalog-data.ts`](../packages/database/src/catalog-data.ts) が持ち、**DB 側には持たない**（二重管理を作らない）。
+> DB の `verified` 列は再 seed で立つ投影であり、書き込み API・管理 UI からは立てない。
+> 昇格手続きは [08](./08-catalog-lifecycle.md) §5。
 
 ### 3.6 `catalog_alias`（マージ用）
 

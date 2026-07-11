@@ -35,3 +35,4 @@ Utopia Must Fall のプレイ結果（スコア / アップグレード取得履
 5. [05-auth-and-privacy.md](./05-auth-and-privacy.md) — 認証 / プライバシー
 6. [06-analysis.md](./06-analysis.md) — 分析機能
 7. [07-roadmap.md](./07-roadmap.md) — フェーズ分け
+8. [08-catalog-lifecycle.md](./08-catalog-lifecycle.md) — カタログの verify 手続き / 孤児掃除 / 管理 UI のスコープ
