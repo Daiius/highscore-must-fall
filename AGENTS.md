@@ -21,6 +21,7 @@
 | [prd/05-auth-and-privacy.md](./prd/05-auth-and-privacy.md) | better-auth / OAuth / プライバシー |
 | [prd/06-analysis.md](./prd/06-analysis.md) | MVP 記述分析 / Phase2 相関分析 |
 | [prd/07-roadmap.md](./prd/07-roadmap.md) | フェーズ分け |
+| [prd/08-catalog-lifecycle.md](./prd/08-catalog-lifecycle.md) | カタログの verify 手続き / evidence / 孤児掃除 / 管理 UI のスコープ / bot 誤読への対処 |
 
 > 仕様策定の経緯（grill ログ）: [`prd/_grilling/decisions.md`](./prd/_grilling/decisions.md)
 

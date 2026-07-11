@@ -97,7 +97,6 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
   'Q-DISRUPTOR TOWER': 'automation',
   'DEPLOY DRONE FACTORY': 'automation',
   'TWIN DRONE FACTORY': 'automation',
-  'THIN DRONE FACTORY': 'automation',
   'DOUBLE-BARRELLED DRONES': 'automation',
   // OU（ガイド掲載の20種。UPGRADE HISTORY に載るものだけが記録に現れる）
   'CHEAP NUKES': 'opportunity',
