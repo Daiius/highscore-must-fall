@@ -14,7 +14,7 @@
 - **画像**: スクショ証跡の添付・保存（各画面1枚・最大3枚、`BlobStore` ローカル、認証配信）。
 - **閲覧**: run 一覧/詳細、自己ベスト・自分の run 内ランキング。
 - **記述分析**: スコア散布図 / アップグレード取得タイムライン（系統構成・アップグレード別。[06](./06-analysis.md) §1.2）。
-- **カタログ管理（最小）**: 未検証一覧・verify・マージ。
+- **カタログ管理（最小）**: 未検証一覧・マージ・孤児削除（**verify は UI から行わない**。昇格は seed への `evidence` 記述＋PR。正典は [08](./08-catalog-lifecycle.md)）。
 - **基盤**: monorepo（shared/database/server/web）、MySQL、docker compose watch、Biome/Vitest、git 2.55+ hooks。
 
 ## スクショ自動解析（Phase3 から前倒し・進行中）
@@ -25,8 +25,9 @@
 - **投入**: 画像 1〜5 枚アップロード → 空 draft run + `analysis_job`（[03](./03-data-model.md) §3.8）。
 - **worker**: `packages/worker` を server とは分離した実行環境で稼働。server API を outbound polling し、
   LLM CLI（JSON Schema 強制）で画像→構造化。
-- **着地**: 共通検証層 → 厳格ゲート（error/warning なし・全 section・全名称 verified）通過で自動 confirmed、
-  それ以外は draft（人間レビュー）。失敗は自動リトライなし・手動再解析。
+- **着地**: 共通検証層 → ゲート（error/warning なし・全 section 揃い。**名前に関する条件は置かない**。
+  [04](./04-ingestion.md) §9.4）通過で自動 confirmed、それ以外は draft（人間レビュー）。
+  失敗は自動リトライなし・手動再解析。
 - **権限**: `user.role`（admin ゲート。[05](./05-auth-and-privacy.md) §6）。
 - **ストレージ**: BlobStore に S3 互換アダプタ（本番 R2 / 開発 SeaweedFS。[02](./02-architecture.md) §7）。
 
@@ -60,4 +61,4 @@
 - ✅ 1 section 複数スクショ: 当初 MVP は1枚固定 → **2026-07-06 緩和**（1 run 最大5枚・同一 section 複数可。[04](./04-ingestion.md) §7）。
 - ✅ スクショ自動解析の設計確定（2026-07-06。[04](./04-ingestion.md) §9。決定ログは [_grilling/decisions.md](./_grilling/decisions.md)）。
 - ✅ CI: **GitHub Actions** で `pnpm check` / `pnpm typecheck` / `pnpm test`（本リポの `.github/workflows/ci.yml`）。
-- ⏳ **恒常課題**: 結果指標・カタログの網羅性（サンプル外項目）→ unverified 自動登録＋人手 verify で漸進対応。
+- ⏳ **恒常課題**: 結果指標・カタログの網羅性（サンプル外項目）→ unverified 自動登録で受け、`evidence` を伴う PR で漸進的に verify（[08](./08-catalog-lifecycle.md)）。**未検証・未分類のまま分析には乗る**（[06](./06-analysis.md) §1.1）。
