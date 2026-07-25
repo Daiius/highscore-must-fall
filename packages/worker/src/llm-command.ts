@@ -20,7 +20,7 @@ export function usesOutputFile(template: string): boolean {
   return template.includes('{output}')
 }
 
-/** 展開できるプレースホルダ名（`{images:PREFIX}` は接尾つきでも images 扱い）。 */
+/** 展開できるプレースホルダ名。接尾辞（`:PREFIX`）を取れるのは `{images:PREFIX}` だけ。 */
 const KNOWN_PLACEHOLDERS = ['schema', 'schema_inline', 'output', 'images', 'model']
 
 /**
@@ -32,9 +32,14 @@ const KNOWN_PLACEHOLDERS = ['schema', 'schema_inline', 'output', 'images', 'mode
  * 起動時に落とすため、綴り違いだけを拾う保守的な形（小文字トークン・`${VAR}` は除外）で検出する。
  */
 export function unknownPlaceholders(template: string): string[] {
-  const found = template.matchAll(/(?<!\$)\{([a-z_][a-z0-9_]*)(?::[^}]*)?\}/g)
-  const names = [...found].map((m) => m[1] as string).filter((n) => !KNOWN_PLACEHOLDERS.includes(n))
-  return [...new Set(names)]
+  const found = template.matchAll(/(?<!\$)\{([a-z_][a-z0-9_]*)(?::([^}]*))?\}/g)
+  const unknown = [...found]
+    // 接尾辞つきを展開できるのは images だけ。`{output:file}` 等は既知名でも展開されない。
+    .filter(([, name, suffix]) =>
+      suffix === undefined ? !KNOWN_PLACEHOLDERS.includes(name as string) : name !== 'images',
+    )
+    .map(([, name, suffix]) => (suffix === undefined ? (name as string) : `${name}:${suffix}`))
+  return [...new Set(unknown)]
 }
 
 /**

@@ -20,6 +20,12 @@ describe('loadConfig', () => {
     ).toThrow(/\{message\}/)
   })
 
+  it('展開されない接尾辞つき（{output:file} 等）も起動時に落とす', () => {
+    expect(() =>
+      loadConfig({ ...baseEnv, WORKER_LLM_COMMAND: 'my-llm --out {output:file}' }),
+    ).toThrow(/\{output:file\}/)
+  })
+
   it('WORKER_API_TOKEN が無ければ落とす', () => {
     expect(() => loadConfig({ WORKER_LLM_COMMAND: baseEnv.WORKER_LLM_COMMAND })).toThrow(
       /WORKER_API_TOKEN/,

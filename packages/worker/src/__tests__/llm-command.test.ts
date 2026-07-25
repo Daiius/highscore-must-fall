@@ -60,6 +60,14 @@ describe('unknownPlaceholders', () => {
     expect(unknownPlaceholders('my-llm {out} {images}')).toEqual(['out'])
   })
 
+  it('接尾辞を展開できるのは {images:PREFIX} だけ', () => {
+    expect(unknownPlaceholders('my-llm {images:-i } {images:}')).toEqual([])
+    expect(unknownPlaceholders('my-llm --out {output:file} --schema {schema:path}')).toEqual([
+      'output:file',
+      'schema:path',
+    ])
+  })
+
   it('同じ綴り違いは 1 回だけ報告する', () => {
     expect(unknownPlaceholders('my-llm {message} then {message}')).toEqual(['message'])
   })
