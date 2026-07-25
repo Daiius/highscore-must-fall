@@ -13,6 +13,14 @@
 
 FROM node:22-slim
 
+# ca-certificates: LLM CLI は OS の CA ストアで TLS を検証する（Node は自前の CA バンドルを持つので
+#   polling は通るが、CLI 側だけが UnknownIssuer で落ちる）。node:22-slim には入っていない。
+# bubblewrap: CLI が自前のサンドボックスでツール実行を隔離する場合に使う。無くても同梱版に
+#   フォールバックするが、毎回警告が出るので OS のものを入れる。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable
 
 WORKDIR /workspace
