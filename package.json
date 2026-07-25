@@ -10,6 +10,9 @@
   },
   "scripts": {
     "dev": "docker compose up --watch --build",
+    "dev:remote": "docker compose --env-file .env.remote up --watch --build",
+    "dev:remote:logs": "docker compose --env-file .env.remote logs -f",
+    "dev:remote:down": "docker compose --env-file .env.remote down",
     "down": "docker compose down",
     "dev:web": "pnpm --filter web dev",
     "dev:server": "pnpm --filter server dev",

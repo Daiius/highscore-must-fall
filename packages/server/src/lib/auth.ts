@@ -24,9 +24,18 @@ const required = (name: string, value: string | undefined, devFallback?: string)
   throw new Error(`${name} is required (NODE_ENV=${process.env.NODE_ENV ?? 'unset'})`)
 }
 
-const baseURL = required('BETTER_AUTH_URL', process.env.BETTER_AUTH_URL, 'http://localhost:4000')
+/**
+ * リモート dev 公開（`pnpm dev:remote`）でのみ compose から注入される公開オリジン。
+ * web も API も同一オリジン（前段プロキシ → Vite の /api proxy → server）で出るため、
+ * baseURL と webOrigin をこの1値に揃える。空文字・未設定ならローカル既定のまま。
+ * 値は**オリジンのみ**（`/api` も `/api/auth` も付けない。better-auth が basePath を付ける）。
+ */
+const publicOrigin = process.env.PUBLIC_ORIGIN || undefined
+
+const baseURL =
+  publicOrigin ?? required('BETTER_AUTH_URL', process.env.BETTER_AUTH_URL, 'http://localhost:4000')
 /** web オリジン（CORS 許可・trustedOrigins 用）。 */
-export const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173'
+export const webOrigin = publicOrigin ?? process.env.WEB_ORIGIN ?? 'http://localhost:5173'
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
