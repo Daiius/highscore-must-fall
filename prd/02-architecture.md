@@ -95,12 +95,50 @@ shared  ← database ← server ← (worker)
 | コマンド | 内容 |
 |---|---|
 | `pnpm dev` | `docker compose watch`（db + server + web） |
+| `pnpm dev:remote` | 同上 ＋ `.env.remote`（リモート dev 公開。→ §5.2） |
 | `pnpm typecheck` | 全パッケージ `tsc --noEmit` |
 | `pnpm check` / `lint` / `format` | Biome |
 | `pnpm test` | Vitest |
 | `pnpm db:migrate` / `db:seed` | Drizzle マイグレーション / 初期 seed |
 
 - 環境変数の実体（`.env*`）は**コミットしない**。雛形 `.env.database.example` 等を各自コピーして使う。
+
+### 5.1 同一オリジン配信（dev / 本番で共通の規約）
+
+ブラウザは**常に自分が配信されているオリジンの `/api`** を叩く。`/api` を server へ届けるのは:
+
+- **dev**: web(Vite) の proxy（`DEV_API_TARGET`。compose では `http://server:4000`）
+- **本番**: リバースプロキシ（`location /api/ { proxy_pass http://<server>:4000; }`）
+
+**どちらも `/api` を剥がさない**のが規約。better-auth は `BETTER_AUTH_URL` の pathname を受信パスから
+剥がしてエンドポイントを解決するため、前段が prefix を剥がすと web 側は prefix 必要／auth 側は prefix 不可で
+両立不能になり、`/api/auth/*` が全て 404 になる（2026-07 に踏んだ）。API を**共有ホストの path prefix 配下に
+マウントしない**（オリジンのルート直下に置く）。
+
+`VITE_API_BASE_URL` は API を**別オリジン**に置く構成のときだけ設定する（値はオリジンのみ・`/api` を付けない）。
+未設定なら `window.location.origin`＝同一オリジン。
+
+### 5.2 リモート dev 公開（`pnpm dev:remote`）
+
+常駐マシン上の dev スタックを、前段プロキシ（TLS 終端＋認証を担うトンネル等）越しに手元ブラウザから
+使うための構成。**ローカル dev と compose / vite 設定を分けない**。単一の `compose.yaml` と
+`vite.config.ts` を env でパラメータ化し、remote 差分は `.env.remote` だけに集約する
+（[`.env.remote.example`](../.env.remote.example)）。差分は次の3つのみ:
+
+| 差分 | ローカル既定 | remote | 効かせ方 |
+|---|---|---|---|
+| 公開オリジン | なし | `PUBLIC_ORIGIN=https://<host>` | server: better-auth `baseURL` / `trustedOrigins` / CORS<br>web: Vite `allowedHosts` と HMR `wss://<host>:443` |
+| web のホスト公開 | `5173`（全 IF） | `127.0.0.1` の1ポート | compose `${WEB_BIND}` |
+
+- **ホストにポートを出すのは web だけ**（db / server / seaweedfs は compose 網内のみ）。前段プロキシは
+  その 1 バインドへ向ける。ブラウザも compose 外の worker も、server には web の `/api` proxy 経由で届く（§5.1）。
+  他プロジェクトとのポート衝突も避けられる。ホストから直接叩きたいときだけ `compose.override.yaml` で足す。
+- https 終端は前段プロキシ。`PUBLIC_ORIGIN` が https なので better-auth は secure cookie を使う。
+- **Google OAuth を remote でも使う場合**は、承認済みリダイレクト URI に
+  `https://<host>/api/auth/callback/google` を追加する。追加しない場合は dev ログインバイパスで確認する
+  （`NODE_ENV=development` 限定。**公開先は必ず前段の認証で保護する**——保護がなければ誰でも
+  dev ユーザーとして入れる）。
+- 前段プロキシは compose の外で常駐させる。**公開ホスト名・ポート・その具体設定は公開リポに書かない**（§9）。
 
 ## 6. 依存ポリシー
 

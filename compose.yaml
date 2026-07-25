@@ -1,5 +1,19 @@
 # 開発環境（Q: docker compose watch / bind mount 最小）。
 # `pnpm dev` = `docker compose watch`。実体の同期は bind mount ではなく watch の sync で行う。
+#
+# ローカル dev とリモート dev 公開（前段プロキシ越しに手元ブラウザから使う）で compose を分けない。
+# 単一の compose.yaml を環境変数でパラメータ化し、remote 差分は `.env.remote` の2変数に集約する
+# （`.env.remote.example` 参照。`pnpm dev:remote` = `docker compose --env-file .env.remote ...`）。
+#
+#   | 差分              | ローカル既定   | remote（.env.remote）        |
+#   |-------------------|----------------|------------------------------|
+#   | web の公開バインド | 5173（全 IF）  | 127.0.0.1 の1ポート（WEB_BIND） |
+#   | 公開オリジン       | なし           | PUBLIC_ORIGIN=https://<host> |
+#
+# ブラウザは常に**同一オリジンの /api** を叩き、web(Vite) の proxy が server へ
+# パスを保持したまま転送する（本番の nginx と同じ規約。prd/02 §5.1）。
+# ホストにポートを出すのは web だけ（db / server / seaweedfs は compose 網内のみ。
+# 他プロジェクトとのポート衝突を避け、remote 公開時の外向きの口を1つに保つ）。
 services:
   db:
     image: mysql:8.4
@@ -38,17 +52,24 @@ services:
       - .env.database
       - .env.server
     environment:
-      # NODE_ENV / WEB_ORIGIN は .env.server（env_file）から注入する。
+      # NODE_ENV / WEB_ORIGIN / BETTER_AUTH_URL は .env.server（env_file）から注入する。
       # compose の environment は env_file より優先されるため、ここに書くと .env.server で上書きできない。
       TZ: "Asia/Tokyo"
+      # remote 公開時のみ .env.remote から入る公開オリジン（例 https://<host>）。
+      # 空＝ローカル dev で、その場合 server は .env.server の WEB_ORIGIN / BETTER_AUTH_URL を使う。
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-}"
     command: pnpm --filter server dev
     depends_on:
       db:
         condition: service_healthy
       seaweedfs:
         condition: service_started
-    ports:
-      - "4000:4000"
+    # ホストへのポート公開はしない（db と同じ理由: 他プロジェクトとのポート衝突回避）。
+    # ブラウザも compose 外 worker も web(Vite) の /api proxy 経由で server に届く
+    # （ローカル http://localhost:5173 / remote は WEB_BIND のアドレス）。
+    # ホストから直接叩きたいときは compose.override.yaml で ports を足す。
+    expose:
+      - "4000"
     volumes:
       - blob-data:/workspace/packages/server/.blob # MVP の BlobStore ローカル実装の保存先
     develop:
@@ -77,11 +98,21 @@ services:
       - .env.web
     environment:
       TZ: "Asia/Tokyo"
+      # 同一オリジン配信: ブラウザは /api を叩き、Vite が compose 内の server へ
+      # パスを保持したまま転送する（/api を剥がさない。剥がすと better-auth が 404 になる）。
+      DEV_API_TARGET: "http://server:4000"
+      # compose 内では常に同一オリジン（自オリジンの /api）。単体起動（pnpm dev:web）向けに
+      # .env.web へ別オリジンを書いていても、compose ではここで無効化する。
+      VITE_API_BASE_URL: ""
+      # remote 公開時のみ設定（vite.config.ts が allowedHosts / HMR wss:443 を条件付与）。
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-}"
     command: pnpm --filter web dev --host
     depends_on:
       - server
+    # ローカルは 5173 を公開。remote は .env.remote の WEB_BIND で、前段プロキシ向けに
+    # loopback の1ポートだけ公開する（唯一の外向きの口）。
     ports:
-      - "5173:5173"
+      - "${WEB_BIND:-5173}:5173"
     develop:
       watch:
         - action: sync

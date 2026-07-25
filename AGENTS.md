@@ -47,6 +47,7 @@
 
 ```bash
 pnpm dev          # docker compose watch（db + server + web を起動・同期）
+pnpm dev:remote   # 同上 + .env.remote（リモート dev 公開。prd/02 §5.2。:logs / :down あり）
 pnpm typecheck    # 全パッケージ tsc --noEmit
 pnpm lint         # Biome lint
 pnpm format       # Biome format

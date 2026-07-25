@@ -5,7 +5,12 @@
 import { hc } from 'hono/client'
 import type { AppType } from 'server/app'
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000'
+// 既定は**同一オリジン**（自分が配信されているオリジン）。/api は dev では Vite の proxy、
+// 本番では nginx が server へパスを保持したまま転送する。VITE_API_BASE_URL は
+// API を別オリジンに置く構成のときだけ設定する（値はオリジンのみ。/api は付けない）。
+// （`location` が無い Node 環境＝ユニットテストからの import では空文字＝相対 URL に落とす。）
+const baseUrl =
+  import.meta.env.VITE_API_BASE_URL || (typeof location === 'undefined' ? '' : location.origin)
 
 export const client = hc<AppType>(baseUrl, {
   init: { credentials: 'include' },
