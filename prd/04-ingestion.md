@@ -129,14 +129,22 @@ confirmed（全ゲート通過）or draft（人間が既存レビュー画面で
 
 ### 9.2 worker
 
-- 実装は [`packages/worker`](../packages/worker)（`shared` 依存）。**compose には含めず、server とは分離した
-  実行環境で稼働**させる（LLM CLI の実行要件のため。実行環境・常駐化の具体構成は公開リポに書かず、
-  非公開の運用メモ側に記す。[02](./02-architecture.md) §9 と同じ姿勢）。
+- 実装は [`packages/worker`](../packages/worker)（`shared` 依存）。**server とは分離した実行環境で稼働**させる
+  （LLM CLI の実行要件のため）。実行環境・常駐化の具体構成は公開リポに書かず、非公開の運用メモ側に記す
+  （[02](./02-architecture.md) §9 と同じ姿勢）。
+  - 開発用の [`compose.yaml`](../compose.yaml)（db/server/web）には**含めない**。worker をコンテナで常駐させる
+    場合も、イメージ（[`packages/worker/Dockerfile`](../packages/worker/Dockerfile)）だけを公開リポに置き、
+    **compose は運用側**に持つ。
+  - **LLM CLI はイメージに含めない**。CLI・モデル・引数は env のコマンドテンプレートで注入する方針なので
+    （下記）、CLI 本体とその認証は実行環境が worker へ与える（マウント等。具体は運用メモ）。
 - server の worker 専用 API を**定期 polling**（outbound のみ）:
   - `claim`（queued を1件、排他的に running へ）/ 画像取得 / `complete`（構造化結果）/ `fail`（エラー内容）。
   - 認証は **`WORKER_API_TOKEN`**（shared secret。env で server / worker 双方に設定）。
 - LLM 呼び出しは **CLI ベースの非対話実行**（画像添付・出力 JSON Schema 強制ができること）。
   **使用する CLI・モデル・引数は env で注入**し、公開リポにツール固有名やコマンド形を置かない（具体は運用メモ）。
+  - テンプレートの**綴り違いは起動時に落とす**（`{output}` を `{message}` と書く等）。展開されないまま
+    CLI の引数として渡ると、CLI がその名前のファイルへ書くだけで worker は成功したように見えるため、
+    設定ミスが無言で残る。
 
 ### 9.3 LLM 入出力契約
 

@@ -95,8 +95,9 @@ services:
         - action: rebuild
           path: pnpm-lock.yaml
 
-# 注: worker（スクショ自動解析）は compose に含めない。server とは分離した実行環境で
-# `pnpm --filter worker daemon` として動かす（prd/04 §9.2。具体構成は非公開の運用メモ）。
+# 注: worker（スクショ自動解析）はこの compose に含めない。server とは分離した実行環境で動かす
+# （prd/04 §9.2）。コンテナで常駐させる場合のイメージは packages/worker/Dockerfile にあるが、
+# それを起動する compose は運用側に持つ（具体構成は非公開の運用メモ）。
 
 volumes:
   db-data:

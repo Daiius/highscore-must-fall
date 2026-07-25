@@ -41,7 +41,7 @@
 | [`packages/database`](./packages/database) | Drizzle スキーマ・マイグレーション・DB クライアント・seed |
 | [`packages/server`](./packages/server) | Hono(RPC) API・better-auth・ingestion アダプタ・(将来)MCP |
 | [`packages/web`](./packages/web) | Vite + React + TanStack Router + Tailwind の UI |
-| [`packages/worker`](./packages/worker) | スクショ自動解析のジョブ処理。**compose 外・server と分離した実行環境で稼働**（prd/04 §9。具体構成は `.claude-personal/` の運用メモ） |
+| [`packages/worker`](./packages/worker) | スクショ自動解析のジョブ処理。**server と分離した実行環境で稼働**（開発用 compose 外。コンテナ用イメージは `packages/worker/Dockerfile`、起動する compose は運用側。prd/04 §9。具体構成は `.claude-personal/` の運用メモ） |
 
 ## 開発コマンド
 

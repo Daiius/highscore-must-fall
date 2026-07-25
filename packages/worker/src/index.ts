@@ -1,5 +1,5 @@
-// worker エントリポイント。compose には含めず、server とは分離した実行環境のホスト上で
-// `pnpm --filter worker daemon` として動かす（prd/04 §9.2。具体構成は非公開の運用メモ）。
+// worker エントリポイント。server とは分離した実行環境で `pnpm --filter worker daemon` として
+// 動かす（ホスト直・コンテナのどちらでもよい。prd/04 §9.2。具体構成は非公開の運用メモ）。
 
 import { loadConfig } from './config'
 import { runDaemon } from './daemon'
