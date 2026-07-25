@@ -2,6 +2,8 @@
 // 使用する LLM CLI・モデル・引数はコマンドテンプレートとして env で渡し、
 // コードにはツール固有名を置かない（prd/04 §9.2。具体値は非公開の運用メモ側）。
 
+import { unknownPlaceholders } from './llm-command'
+
 export interface WorkerConfig {
   /** server のベース URL（worker API のエンドポイント）。 */
   serverUrl: string
@@ -40,11 +42,21 @@ function intEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number 
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
+  const llmCommand = required(env, 'WORKER_LLM_COMMAND')
+  // 綴り違いのプレースホルダは展開されず CLI へそのまま渡る（＝無言で壊れる）ので起動時に落とす。
+  const unknown = unknownPlaceholders(llmCommand)
+  if (unknown.length > 0) {
+    throw new Error(
+      `WORKER_LLM_COMMAND に展開できないプレースホルダがあります: ${unknown
+        .map((n) => `{${n}}`)
+        .join(' ')}`,
+    )
+  }
   return {
     serverUrl: env.WORKER_SERVER_URL ?? 'http://localhost:4000',
     apiToken: required(env, 'WORKER_API_TOKEN'),
     pollIntervalMs: intEnv(env, 'WORKER_POLL_INTERVAL_MS', 15_000),
-    llmCommand: required(env, 'WORKER_LLM_COMMAND'),
+    llmCommand,
     llmModel: env.WORKER_LLM_MODEL,
     llmTimeoutMs: intEnv(env, 'WORKER_LLM_TIMEOUT_MS', 15 * 60 * 1000),
   }

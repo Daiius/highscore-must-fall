@@ -20,6 +20,23 @@ export function usesOutputFile(template: string): boolean {
   return template.includes('{output}')
 }
 
+/** 展開できるプレースホルダ名（`{images:PREFIX}` は接尾つきでも images 扱い）。 */
+const KNOWN_PLACEHOLDERS = ['schema', 'schema_inline', 'output', 'images', 'model']
+
+/**
+ * `{name}` 形式のうち展開できないものを列挙する。
+ *
+ * 綴り違いは**そのまま CLI の引数として渡ってしまい**、無言で壊れる（実例: `{output}` のつもりで
+ * `{message}` と書き、LLM CLI が `{message}` という名前のファイルへ結果を書いた。worker は
+ * stdout 構成だと判定して結果を stdout から読むため、成功しているように見える）。
+ * 起動時に落とすため、綴り違いだけを拾う保守的な形（小文字トークン・`${VAR}` は除外）で検出する。
+ */
+export function unknownPlaceholders(template: string): string[] {
+  const found = template.matchAll(/(?<!\$)\{([a-z_][a-z0-9_]*)(?::[^}]*)?\}/g)
+  const names = [...found].map((m) => m[1] as string).filter((n) => !KNOWN_PLACEHOLDERS.includes(n))
+  return [...new Set(names)]
+}
+
 /**
  * コマンドテンプレートを実際のコマンド文字列へ展開する。
  * `{images:PREFIX}` は各画像パスを PREFIX 付きで並べる（例 `{images:-i }` → `-i 'a' -i 'b'`）。
