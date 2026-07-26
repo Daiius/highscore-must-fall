@@ -25,7 +25,7 @@ import {
   YAxis,
   ZAxis,
 } from 'recharts'
-import { type TrendAnalysis as TrendAnalysisData, UPGRADE_BRANCH_LABELS } from 'shared'
+import { gameDayOf, type TrendAnalysis as TrendAnalysisData, UPGRADE_BRANCH_LABELS } from 'shared'
 import { client } from '../../api'
 import { callApi } from '../../lib/api-result'
 import { useAuth } from '../../lib/auth'
@@ -167,6 +167,11 @@ function Caveat({ runCount, runLimit }: { runCount: number; runLimit: number }) 
         遅い初出はその日まで生存した run にしか存在しない）。
         右上がりでも「取ると伸びる」「早く取ると伸びる」を意味しません。
       </p>
+      <p className="text-slate-300">
+        取得タイミングは<strong className="text-amber-200">推定値</strong>です。結果画面から確実に
+        取れるのは「どの週か」と「週内で何番目か」までで、週内が等間隔だったと仮定して
+        経過日数に直しています。
+      </p>
       <p className="text-slate-400">
         対象 {runCount.toLocaleString()} run（直近 {runLimit.toLocaleString()} 件まで）。
       </p>
@@ -191,7 +196,9 @@ function PanelRow({
 }) {
   // OU は常に取得日軸（取得数が 0/1 にしかならないため）。
   const showsDay = isOu || xMode === 'firstDay'
-  const xLabel = showsDay ? '仮取得日（未 = 未取得）' : '取得数'
+  // 「仮取得日」は推定した経過日数であって観測値ではない（prd/01 §2.1）。
+  // ゲーム内の『N 日目』と誤読されないよう、軸は経過日数として出す。
+  const xLabel = showsDay ? '推定の経過日数（未 = 未取得）' : '取得数'
 
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/30 p-3">
@@ -275,7 +282,7 @@ function MiniScatter({
                     {showsDay
                       ? point.x === NOT_TAKEN_X
                         ? '未取得'
-                        : `${point.x.toFixed(1)} 日目`
+                        : `経過 ${point.x.toFixed(1)} 日（推定 ${gameDayOf(point.x)} 日目）`
                       : `${point.x} 個`}
                   </p>
                   <p className="text-slate-400">生存 {point.days} 日</p>
