@@ -41,6 +41,42 @@ type RowMode = 'series' | 'withOu'
 /** 「未取得」を散布図に置くための番兵。x 軸の左端に列として立てる。 */
 const NOT_TAKEN_X = -2
 
+/**
+ * 横軸の仕様。取得数（個）・経過日数（日）・率（無次元）で目盛りも単位も違うので、
+ * パネル側に持たせず呼び出し側から渡す。共通化のために「取得数」の見た目を流用すると、
+ * リロール率 0.25 が「0.25 個」と表示される。
+ */
+interface XAxisSpec {
+  label: string
+  /** 軸下限。未取得の列を立てるパネルだけ番兵まで広げる。 */
+  min: number
+  tick: (value: number) => string
+  tooltip: (value: number) => string
+}
+
+const COUNT_AXIS: XAxisSpec = {
+  label: '取得数',
+  min: 0,
+  tick: (v) => String(Math.round(v)),
+  tooltip: (v) => `${v} 個`,
+}
+
+/** 推定の経過日数。ゲーム内の『N 日目』と区別する（prd/01 §2.1）。 */
+const DAY_AXIS: XAxisSpec = {
+  label: '推定の経過日数（未 = 未取得）',
+  min: NOT_TAKEN_X,
+  tick: (v) => (v === NOT_TAKEN_X ? '未' : String(Math.round(v))),
+  tooltip: (v) =>
+    v === NOT_TAKEN_X ? '未取得' : `経過 ${v.toFixed(1)} 日（推定 ${gameDayOf(v)} 日目）`,
+}
+
+const rateAxis = (label: string, unit: string): XAxisSpec => ({
+  label,
+  min: 0,
+  tick: (v) => v.toFixed(2),
+  tooltip: (v) => `${v.toFixed(2)} ${unit}`,
+})
+
 interface Panel {
   key: string
   label: string
@@ -143,8 +179,8 @@ export function TrendAnalysis() {
           <PanelRow
             key={panel.key}
             panel={panel}
-            xMode={xMode}
-            isOu={panel.key.startsWith('ou:')}
+            // OU は常に経過日数軸（取得数が 0/1 にしかならず散布図として機能しない）。
+            xAxis={panel.key.startsWith('ou:') || xMode === 'firstDay' ? DAY_AXIS : COUNT_AXIS}
             lowSampleThreshold={data.lowSampleThreshold}
             scoreMin={scoreMin}
             scoreMax={scoreMax}
@@ -181,25 +217,17 @@ function Caveat({ runCount, runLimit }: { runCount: number; runLimit: number }) 
 
 function PanelRow({
   panel,
-  xMode,
-  isOu,
+  xAxis,
   lowSampleThreshold,
   scoreMin,
   scoreMax,
 }: {
   panel: Panel
-  xMode: XMode
-  isOu: boolean
+  xAxis: XAxisSpec
   lowSampleThreshold: number
   scoreMin: number
   scoreMax: number
 }) {
-  // OU は常に取得日軸（取得数が 0/1 にしかならないため）。
-  const showsDay = isOu || xMode === 'firstDay'
-  // 「仮取得日」は推定した経過日数であって観測値ではない（prd/01 §2.1）。
-  // ゲーム内の『N 日目』と誤読されないよう、軸は経過日数として出す。
-  const xLabel = showsDay ? '推定の経過日数（未 = 未取得）' : '取得数'
-
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/30 p-3">
       <div className="mb-2 flex flex-wrap items-baseline gap-2">
@@ -210,14 +238,14 @@ function PanelRow({
             データ不足（{lowSampleThreshold} 未満）
           </span>
         )}
-        <span className="ml-auto text-slate-500 text-xs">横軸: {xLabel}</span>
+        <span className="ml-auto text-slate-500 text-xs">横軸: {xAxis.label}</span>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <MiniScatter
           panel={panel}
           yKey="days"
           yLabel="生存日数"
-          showsDay={showsDay}
+          xAxis={xAxis}
           scoreMin={scoreMin}
           scoreMax={scoreMax}
         />
@@ -225,7 +253,7 @@ function PanelRow({
           panel={panel}
           yKey="score"
           yLabel="スコア"
-          showsDay={showsDay}
+          xAxis={xAxis}
           scoreMin={scoreMin}
           scoreMax={scoreMax}
         />
@@ -238,14 +266,14 @@ function MiniScatter({
   panel,
   yKey,
   yLabel,
-  showsDay,
+  xAxis,
   scoreMin,
   scoreMax,
 }: {
   panel: Panel
   yKey: 'days' | 'score'
   yLabel: string
-  showsDay: boolean
+  xAxis: XAxisSpec
   scoreMin: number
   scoreMax: number
 }) {
@@ -258,9 +286,9 @@ function MiniScatter({
           <XAxis
             type="number"
             dataKey="x"
-            domain={showsDay ? [NOT_TAKEN_X, 'dataMax'] : [0, 'dataMax']}
+            domain={[xAxis.min, 'dataMax']}
             tick={{ fill: '#94a3b8', fontSize: 10 }}
-            tickFormatter={(v: number) => (v === NOT_TAKEN_X ? '未' : String(Math.round(v)))}
+            tickFormatter={xAxis.tick}
           />
           <YAxis
             type="number"
@@ -278,13 +306,7 @@ function MiniScatter({
               if (!point) return null
               return (
                 <div className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs">
-                  <p className="text-slate-200">
-                    {showsDay
-                      ? point.x === NOT_TAKEN_X
-                        ? '未取得'
-                        : `経過 ${point.x.toFixed(1)} 日（推定 ${gameDayOf(point.x)} 日目）`
-                      : `${point.x} 個`}
-                  </p>
+                  <p className="text-slate-200">{xAxis.tooltip(point.x)}</p>
                   <p className="text-slate-400">生存 {point.days} 日</p>
                   <p className="text-slate-400">スコア {point.score.toLocaleString()}</p>
                 </div>
@@ -314,10 +336,11 @@ function RunMetrics({
   scoreMin: number
   scoreMax: number
 }) {
-  const panels: { key: string; label: string; points: Panel['points'] }[] = [
+  const panels: { key: string; label: string; xAxis: XAxisSpec; points: Panel['points'] }[] = [
     {
       key: 'reroll',
       label: 'リロール率（回 / 取得機会）',
+      xAxis: rateAxis('リロール率', '回 / 取得機会'),
       points: data.runMetrics.map((m) => ({
         x: m.rerollRate,
         days: m.daysSurvived,
@@ -327,6 +350,7 @@ function RunMetrics({
     {
       key: 'nukes',
       label: '核発射数 / 日',
+      xAxis: rateAxis('核発射数 / 日', '発 / 日'),
       points: data.runMetrics.map((m) => ({
         x: m.nukesPerDay,
         days: m.daysSurvived,
@@ -353,8 +377,7 @@ function RunMetrics({
             lowSample: false,
             points: p.points,
           }}
-          xMode="count"
-          isOu={false}
+          xAxis={p.xAxis}
           lowSampleThreshold={data.lowSampleThreshold}
           scoreMin={scoreMin}
           scoreMax={scoreMax}
