@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { constants, deflateSync, inflateSync } from 'node:zlib'
 
 // ---------------------------------------------------------------- PNG codec
@@ -40,7 +41,7 @@ function crc32(buf) {
 }
 
 /** PNG を読んで {width, height, channels, data} にする。8bit / 非インタレースのみ。 */
-function decodePng(file) {
+export function decodePng(file) {
   const buf = readFileSync(file)
   let offset = 8
   let header = null
@@ -102,7 +103,7 @@ function decodePng(file) {
 }
 
 /** グレースケール 8bit（カラータイプ 0）で書き出す。 */
-function encodeGrayPng(width, height, gray, file) {
+export function encodeGrayPng(width, height, gray, file) {
   const raw = Buffer.alloc(height * (width + 1))
   for (let y = 0; y < height; y++) {
     raw[y * (width + 1)] = 2 // Up filter。横に走る UI の罫線と字面によく効く
@@ -140,10 +141,31 @@ function encodeGrayPng(width, height, gray, file) {
 const SEPARATOR = 40 // 帯の境界に引く1px の線の輝度（ゲーム内の文字と紛れない暗さ）
 
 /**
+ * 画素の輝度（0-255）。**カラータイプごとのチャンネル構成を解いてから計算する。**
+ *
+ * decodePng は grayscale(1ch) と grayscale+alpha(2ch) も受理する。連続3バイトを無条件に
+ * R/G/B として読むと、これらでは隣の画素や alpha が色成分に混入して**字形が変わる**。
+ * しかも --verify は同じ変換を通るので画素一致検証では検知できない（証拠として致命的）。
+ *
+ * alpha は**黒背景へ合成**する。ゲーム画面は黒地の UI であり、透過部分を黒として扱うのが
+ * 見た目に一致する。合成規則を固定しておくこと自体が決定論の要件でもある。
+ */
+function lumaAt(image, x, y) {
+  const s = (y * image.width + x) * image.channels
+  const d = image.data
+  const gray = image.channels <= 2
+  const r = d[s]
+  const g = gray ? d[s] : d[s + 1]
+  const b = gray ? d[s] : d[s + 2]
+  const alpha = image.channels === 2 || image.channels === 4 ? d[s + image.channels - 1] : 255
+  return ((0.299 * r + 0.587 * g + 0.114 * b) * alpha) / 255
+}
+
+/**
  * manifest から証拠シートの画素を組み立てる。**この関数が決定論の本体**。
  * 同じ原本・同じ manifest なら常に同じ画素になること。
  */
-function buildSheet(manifest, rawDir) {
+export function buildSheet(manifest, rawDir) {
   const { width, posterize } = manifest
   const strips = manifest.strips.map((strip) => {
     const file = join(rawDir, strip.source)
@@ -158,8 +180,7 @@ function buildSheet(manifest, rawDir) {
     const gray = Buffer.alloc(width * h)
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const s = ((y0 + y) * image.width + (x0 + x)) * image.channels
-        const luma = 0.299 * image.data[s] + 0.587 * image.data[s + 1] + 0.114 * image.data[s + 2]
+        const luma = lumaAt(image, x0 + x, y0 + y)
         const quantized = Math.min(255, Math.round(Math.round(luma) / posterize) * posterize)
         gray[y * width + x] = quantized
       }
@@ -183,52 +204,59 @@ function buildSheet(manifest, rawDir) {
 
 // -------------------------------------------------------------------- CLI
 
-const [manifestPath, ...flags] = process.argv.slice(2)
-if (!manifestPath) {
-  console.error('usage: node scripts/evidence-sheet.mjs <manifest.json> [--verify]')
-  process.exit(2)
-}
-const verify = flags.includes('--verify')
-const manifestFile = resolve(manifestPath)
-const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
-const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..')
-const rawDir = resolve(repoRoot, manifest.rawDir)
-const pngFile = join(dirname(manifestFile), `${manifest.sheet}.png`)
-
-const { width, height, sheet, sha256s } = buildSheet(manifest, rawDir)
-
-// 原本の sha256 を突合（未記入なら補って manifest を書き戻す）。
-const drift = []
-let filled = false
-for (const [index, strip] of manifest.strips.entries()) {
-  if (!strip.sha256) {
-    strip.sha256 = sha256s[index]
-    filled = true
-  } else if (strip.sha256 !== sha256s[index]) {
-    drift.push(
-      `${strip.source}: 記録 ${strip.sha256.slice(0, 12)} / 実物 ${sha256s[index].slice(0, 12)}`,
-    )
+function main(argv) {
+  const [manifestPath, ...flags] = argv
+  if (!manifestPath) {
+    console.error('usage: node scripts/evidence-sheet.mjs <manifest.json> [--verify]')
+    return 2
   }
-}
-if (drift.length > 0) {
-  console.error(`[evidence-sheet] 原本の sha256 が一致しない:\n  ${drift.join('\n  ')}`)
-  process.exit(1)
+  const verify = flags.includes('--verify')
+  const manifestFile = resolve(manifestPath)
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const rawDir = resolve(repoRoot, manifest.rawDir)
+  const pngFile = join(dirname(manifestFile), `${manifest.sheet}.png`)
+
+  const { width, height, sheet, sha256s } = buildSheet(manifest, rawDir)
+
+  // 原本の sha256 を突合（未記入なら補って manifest を書き戻す）。
+  const drift = []
+  let filled = false
+  for (const [index, strip] of manifest.strips.entries()) {
+    if (!strip.sha256) {
+      strip.sha256 = sha256s[index]
+      filled = true
+    } else if (strip.sha256 !== sha256s[index]) {
+      drift.push(
+        `${strip.source}: 記録 ${strip.sha256.slice(0, 12)} / 実物 ${sha256s[index].slice(0, 12)}`,
+      )
+    }
+  }
+  if (drift.length > 0) {
+    console.error(`[evidence-sheet] 原本の sha256 が一致しない:\n  ${drift.join('\n  ')}`)
+    return 1
+  }
+
+  if (verify) {
+    const committed = decodePng(pngFile)
+    if (committed.width !== width || committed.height !== height || committed.channels !== 1) {
+      console.error(`[evidence-sheet] ${manifest.sheet}: 寸法が違う（再生成が必要）`)
+      return 1
+    }
+    if (committed.data.compare(sheet) !== 0) {
+      console.error(`[evidence-sheet] ${manifest.sheet}: 画素が manifest から再現できない`)
+      return 1
+    }
+    console.log(`[evidence-sheet] ${manifest.sheet}: 原本から再現できた（${width}x${height}）`)
+  } else {
+    encodeGrayPng(width, height, sheet, pngFile)
+    if (filled) writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
+    console.log(`[evidence-sheet] ${pngFile} を生成（${width}x${height}）`)
+  }
+  return 0
 }
 
-if (verify) {
-  const committed = decodePng(pngFile)
-  if (committed.width !== width || committed.height !== height || committed.channels !== 1) {
-    console.error(`[evidence-sheet] ${manifest.sheet}: 寸法が違う（再生成が必要）`)
-    process.exit(1)
-  }
-  const differing = committed.data.compare(sheet) !== 0
-  if (differing) {
-    console.error(`[evidence-sheet] ${manifest.sheet}: 画素が manifest から再現できない`)
-    process.exit(1)
-  }
-  console.log(`[evidence-sheet] ${manifest.sheet}: 原本から再現できた（${width}x${height}）`)
-} else {
-  encodeGrayPng(width, height, sheet, pngFile)
-  if (filled) writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
-  console.log(`[evidence-sheet] ${pngFile} を生成（${width}x${height}）`)
+// テストから import できるよう、CLI として直接起動されたときだけ走らせる。
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exit(main(process.argv.slice(2)))
 }
