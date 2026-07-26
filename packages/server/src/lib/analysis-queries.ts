@@ -12,6 +12,12 @@
 
 import { db, run, upgradeCatalog, upgradeEntry } from 'database'
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
+import {
+  type AnalysisEntry,
+  type AnalysisRunInput,
+  buildTrendAnalysis,
+  type TrendAnalysis,
+} from 'shared'
 
 /**
  * 取得タイムラインの対象 run 上限（直近から数える）。
@@ -104,4 +110,77 @@ export async function getAnalysisSummary(ownerId: string) {
     timeline,
     timelineRunLimit: TIMELINE_RUN_LIMIT,
   }
+}
+
+/**
+ * 傾向分析（prd/06 §2）の対象 run 上限（直近から数える）。
+ * 記述分析のタイムライン（TIMELINE_RUN_LIMIT）と同じ考え方で、上限は UI に明示する。
+ * 散布図は 1 系統あたり run 数ぶんの点になるため、送信量と可読性の両方で上限が要る。
+ */
+export const TREND_RUN_LIMIT = 200
+
+/**
+ * 傾向分析の集計。SQL で行を取り、系統への畳み込みと仮取得日の算出は shared の純粋関数に任せる
+ * （系統マッピングが TS 側にあり SQL だけでは完結しないため。prd/06 §2）。
+ *
+ * **事前集計テーブルは作らない**（prd/06 §4）。毎回組み立てるので、カタログの訂正や
+ * 系統分類の追加は次の描画から反映される（prd/06 §4.1 の「訂正が凍結されない」要件）。
+ */
+export async function getTrendAnalysis(
+  ownerId: string,
+): Promise<TrendAnalysis & { runLimit: number }> {
+  const recentRuns = await db
+    .select({
+      runId: run.id,
+      finalScore: run.finalScore,
+      daysSurvived: run.daysSurvived,
+      nukesLaunched: run.nukesLaunched,
+    })
+    .from(run)
+    .where(and(eq(run.ownerId, ownerId), eq(run.status, 'confirmed')))
+    .orderBy(desc(run.playedAt), desc(run.id))
+    .limit(TREND_RUN_LIMIT)
+
+  const runIds = recentRuns.map((r) => r.runId)
+  const rows =
+    runIds.length === 0
+      ? []
+      : await db
+          .select({
+            runId: upgradeEntry.runId,
+            weekIndex: upgradeEntry.weekIndex,
+            orderInWeek: upgradeEntry.orderInWeek,
+            entryType: upgradeEntry.entryType,
+            name: upgradeCatalog.displayName,
+            kind: upgradeCatalog.kind,
+          })
+          .from(upgradeEntry)
+          .leftJoin(upgradeCatalog, eq(upgradeEntry.upgradeCatalogId, upgradeCatalog.id))
+          .where(and(eq(upgradeEntry.ownerId, ownerId), inArray(upgradeEntry.runId, runIds)))
+          .orderBy(asc(upgradeEntry.weekIndex), asc(upgradeEntry.orderInWeek))
+
+  const entriesByRun = new Map<string, AnalysisEntry[]>()
+  for (const row of rows) {
+    const entry: AnalysisEntry = {
+      weekIndex: row.weekIndex,
+      orderInWeek: row.orderInWeek,
+      entryType: row.entryType,
+      name: row.name ?? null,
+      kind: row.kind ?? null,
+    }
+    const list = entriesByRun.get(row.runId)
+    if (list) list.push(entry)
+    else entriesByRun.set(row.runId, [entry])
+  }
+
+  // draft を許すため DB 上は nullable だが、confirmed では埋まっている（prd/03 §4）。
+  const inputs: AnalysisRunInput[] = recentRuns.map((r) => ({
+    runId: r.runId,
+    finalScore: r.finalScore ?? 0,
+    daysSurvived: r.daysSurvived ?? 0,
+    nukesLaunched: r.nukesLaunched ?? 0,
+    entries: entriesByRun.get(r.runId) ?? [],
+  }))
+
+  return { ...buildTrendAnalysis(inputs), runLimit: TREND_RUN_LIMIT }
 }
