@@ -40,6 +40,10 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
   //   volley      : VOLLEY RAILGUN → TRIPLE → QUAD → PENT
   //   coil        : COBALT COIL GUN 配下（GRAPHENE TIPPED RODS / RICOCHET MUNITIONS はここ）
   //   basilisk    : TELEGRAPH BASILISK 配下（BUNDLING/SPLINTER 系はここ。独立経路ではない）
+  //
+  // **前提条件は系統を跨ぐことがある**（ユーザー確認 2026-07-26）。例: INCENDIARY COATING は
+  // basilisk 配下（説明が "DIP UTILITY POLE MUNITIONS…"）だが、前提は核系の OVER-FUELLED BOOSTERS。
+  // 「A の前提が B だから A は B と同系統」という推論はしないこと。
   //   blunderbuss : GARBAGE BLUNDERBUSS 配下
   //   共通        : 分岐前に取る強化（EXTENDED BARREL / IMPROVE GIMBAL SPEED）。
   //                 INCREASE FIRE RATE は分岐前・分岐後の双方で取得できる（文脈依存）。
@@ -60,6 +64,8 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
   'OVERWEIGHT BUNDLES': 'railgun',
   'SPLINTERING POLES': 'railgun',
   'HARDENED SPLINTERS': 'railgun',
+  'HURRIED BUNDLING': 'railgun',
+  'INCENDIARY COATING': 'railgun',
   'GARBAGE BLUNDERBUSS': 'railgun',
   'DELUXE TRASH COMPACTOR': 'railgun',
   'QUAD BLUNDERBUSS': 'railgun',
@@ -72,6 +78,8 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
   'RATIONED WARHEADS': 'nuke',
   'ANTIMATTER WARHEADS': 'nuke',
   'EXTENDED PLASMA DECAY': 'nuke',
+  // ツリー上は中央のリロールノードから (2,2) の炎アイコン（ユーザー確認 2026-07-26）。
+  // basilisk 系 INCENDIARY COATING の前提として現れるが、系統跨ぎの前提なので nuke のまま。
   'OVER-FUELLED BOOSTERS': 'nuke',
   // シールド系（PLASMA PHYSICS LAB 配下）
   'PLASMA PHYSICS LAB': 'shield',

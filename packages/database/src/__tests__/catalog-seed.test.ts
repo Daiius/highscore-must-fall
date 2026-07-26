@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { normalizeName, UPGRADE_SERIES_BY_NAME, UPGRADE_SERIES_UNCLASSIFIED } from 'shared'
 import { describe, expect, it } from 'vitest'
@@ -19,16 +19,58 @@ import { REWARDS, UPGRADES } from '../catalog-data'
 // evidence（= verified の根拠）が指す画像は必ず実在すること。画像を消す/改名すれば落ちる。
 // 逆方向（画像に写っているが seed に無い名前）は許す（prd/08 §3）。
 
+const SAMPLES_DIR = fileURLToPath(new URL('../../../../prd/samples', import.meta.url))
+const SAMPLE_FILES = readdirSync(SAMPLES_DIR)
+
 /** prd/samples/ に実在する画像の evidence 識別子（拡張子なしのファイル名）。 */
 const SAMPLE_IDS: ReadonlySet<string> = new Set(
-  readdirSync(fileURLToPath(new URL('../../../../prd/samples', import.meta.url)))
-    .filter((f) => f.endsWith('.png'))
-    .map((f) => f.slice(0, -'.png'.length)),
+  SAMPLE_FILES.filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -'.png'.length)),
 )
+
+// 証拠シート（scripts/evidence-sheet.mjs が生成する加工画像）には manifest が同名で並ぶ。
+// manifest は「どの帯にどの名前が写っているか」を宣言しているので、evidence がシートを指す
+// なら、その名前がシートに載っていると宣言されていることまで検査できる（貼り違えの検出）。
+// manifest を持たない従来のフル画面スクショは、この検査の対象外（実在チェックのみ）。
+const SHEET_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  SAMPLE_FILES.filter((f) => f.endsWith('.json')).map((f) => {
+    const manifest = JSON.parse(readFileSync(`${SAMPLES_DIR}/${f}`, 'utf8'))
+    const names = manifest.strips.flatMap((strip: { names: string[] }) => strip.names)
+    return [f.slice(0, -'.json'.length), new Set<string>(names)]
+  }),
+)
+
+/** evidence がシートを指すなら、その名前が manifest に宣言されていること。 */
+function undeclared(entries: readonly { name: string; evidence: string | null }[]): string[] {
+  return entries
+    .filter((e) => e.evidence !== null && SHEET_NAMES.get(e.evidence)?.has(e.name) === false)
+    .map((e) => `${e.name} -> ${e.evidence}`)
+}
 
 describe('prd/samples', () => {
   it('画像が1枚以上ある（パスの取り違えでテストが空振りしない）', () => {
     expect(SAMPLE_IDS.size).toBeGreaterThan(0)
+  })
+
+  it('証拠シートの manifest が1つ以上ある（以下の検査が空振りしない）', () => {
+    expect(SHEET_NAMES.size).toBeGreaterThan(0)
+  })
+
+  it('manifest の sheet 名はファイル名と一致し、対応する画像がある', () => {
+    for (const [sheetId] of SHEET_NAMES) {
+      const manifest = JSON.parse(readFileSync(`${SAMPLES_DIR}/${sheetId}.json`, 'utf8'))
+      expect(manifest.sheet).toBe(sheetId)
+      expect(SAMPLE_IDS.has(sheetId)).toBe(true)
+    }
+  })
+
+  it('manifest の各帯は原本ファイル名と sha256 を持つ（原本へ遡れる）', () => {
+    for (const [sheetId] of SHEET_NAMES) {
+      const manifest = JSON.parse(readFileSync(`${SAMPLES_DIR}/${sheetId}.json`, 'utf8'))
+      for (const strip of manifest.strips) {
+        expect(strip.source).toBeTruthy()
+        expect(strip.sha256).toMatch(/^[0-9a-f]{64}$/)
+      }
+    }
   })
 })
 
@@ -58,6 +100,10 @@ describe('upgrade seed', () => {
       (u) => u.evidence !== null && !u.evidence.startsWith('contracts'),
     ).map((u) => `${u.name} -> ${u.evidence}`)
     expect(wrongSection).toEqual([])
+  })
+
+  it('evidence がシートを指すなら、その名前が manifest に宣言されている', () => {
+    expect(undeclared(UPGRADES)).toEqual([])
   })
 
   it('seed の全名称は系統が付いているか、未分類として宣言されている', () => {
@@ -98,5 +144,9 @@ describe('reward seed', () => {
       (r) => r.evidence !== null && !r.evidence.startsWith('rewards'),
     ).map((r) => `${r.name} -> ${r.evidence}`)
     expect(wrongSection).toEqual([])
+  })
+
+  it('evidence がシートを指すなら、その名前が manifest に宣言されている', () => {
+    expect(undeclared(REWARDS)).toEqual([])
   })
 })
