@@ -164,6 +164,50 @@ describe('buildTrendAnalysis', () => {
     expect(withKind.opportunities.map((o) => o.name)).toEqual(['UNKNOWN NEW OU'])
   })
 
+  it('kind が OU の未収載名を unknown へ二重計上しない', () => {
+    // ゲーム更新直後、新 OU が unverified 自動登録される期間に起きる。
+    // 名前分類だけで branch を決めると、個別 OU と unknown の両方に乗ってしまう。
+    const withKind = buildTrendAnalysis([
+      run({
+        runId: 'x',
+        entries: [
+          {
+            weekIndex: 1,
+            orderInWeek: 1,
+            entryType: 'upgrade',
+            name: 'UNKNOWN NEW OU',
+            kind: 'opportunity_upgrade',
+          },
+        ],
+      }),
+    ])
+    const unknown = withKind.branches.find((b) => b.branch === 'unknown')
+    expect(unknown?.takenRuns).toBe(0)
+    expect(unknown?.points[0]?.count).toBe(0)
+    // opportunity 側にだけ乗る
+    expect(withKind.branches.find((b) => b.branch === 'opportunity')?.points[0]?.count).toBe(1)
+  })
+
+  it('DB が未再 seed で kind=contract のままでも、既知の OU 名は OU として扱う', () => {
+    // unverified 自動登録の既定は contract。再 seed するまで DB 側は OU を知らない。
+    const staleKind = buildTrendAnalysis([
+      run({
+        runId: 'y',
+        entries: [
+          {
+            weekIndex: 1,
+            orderInWeek: 1,
+            entryType: 'upgrade',
+            name: 'IN-FLIGHT REPAIRS',
+            kind: 'contract',
+          },
+        ],
+      }),
+    ])
+    expect(staleKind.opportunities.map((o) => o.name)).toEqual(['IN-FLIGHT REPAIRS'])
+    expect(staleKind.branches.find((b) => b.branch === 'opportunity')?.points[0]?.count).toBe(1)
+  })
+
   it('リロールは率で、核は 1 日あたりで返す', () => {
     const long = result.runMetrics.find((m) => m.runId === 'long')
     expect(long?.upgrades).toBe(4)

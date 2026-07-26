@@ -196,10 +196,33 @@ export function withAcquisitionDays(run: AnalysisRunInput): DatedEntry[] {
   )
 }
 
-/** OU かどうか。DB の kind を優先し、無ければ分類で代替する。 */
+/**
+ * OU かどうか。**`kind` と名前分類のどちらかが OU と言えば OU** とする（precedence ではなく和）。
+ *
+ * 2 つの出所が食い違うのは、どちらも「未追随」の形でしか起きないため:
+ *   - `kind=opportunity_upgrade` だが `series.ts` に無い … ゲーム更新直後の新 OU
+ *     （自動登録された行に seed で kind が付いた状態）
+ *   - `series.ts` では OU だが `kind=contract` … **その行がまだ再 seed されていない**
+ *     （unverified 自動登録の既定は `contract`。rules/database.md）
+ *
+ * どちらの食い違いも「実際は OU」を意味するので、和を取るのが正しい。
+ */
 function isOpportunity(entry: AnalysisEntry): boolean {
-  if (entry.kind) return entry.kind === 'opportunity_upgrade'
+  if (entry.kind === 'opportunity_upgrade') return true
   return entry.name !== null && upgradeBranchOf(entry.name) === 'opportunity'
+}
+
+/**
+ * エントリの分類。**OU 判定と同じ規則で決める**——`kind` が OU なら名前分類に関わらず
+ * `opportunity` にする。
+ *
+ * ここを名前分類だけで決めると、**カタログ上は OU だが `series.ts` に未収載の名前**が
+ * 個別 OU パネルと `unknown` の両方に計上され、branch の取得数・初出日・takenRuns が汚れる。
+ * ゲーム更新直後（新 OU が unverified 自動登録される期間）に必ず起きる。
+ */
+function branchOfEntry(entry: AnalysisEntry): UpgradeBranch {
+  if (isOpportunity(entry)) return 'opportunity'
+  return entry.name === null ? 'unknown' : upgradeBranchOf(entry.name)
 }
 
 /**
@@ -212,7 +235,7 @@ export function buildTrendAnalysis(runs: readonly AnalysisRunInput[]): TrendAnal
   const branches: BranchTrend[] = UPGRADE_BRANCH_KEYS.map((branch) => {
     const points: BranchPoint[] = perRun.map(({ run, dated }) => {
       const hits = dated.filter(
-        (e) => e.entryType === 'upgrade' && e.name !== null && upgradeBranchOf(e.name) === branch,
+        (e) => e.entryType === 'upgrade' && e.name !== null && branchOfEntry(e) === branch,
       )
       return {
         runId: run.runId,
