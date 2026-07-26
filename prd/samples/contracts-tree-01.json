@@ -1,0 +1,71 @@
+{
+  "sheet": "contracts-tree-01",
+  "note": "SIGN CONTRACTS 画面（週の契約提示＋技術ツリー）。ツリーのノードをホバーすると画面下部に名称・説明・前提条件が出る。未取得ノードも読めるため、run を回さずにカタログ名を回収できる。左パネルはその週の提示（TURRET / SHIELD / OUTPOSTS / LIMITED OPPORTUNITY / CITIZEN PROPOSAL）。",
+  "origin": "2026-07-26 にユーザーが clip-dev の期限付き共有で提供。原本は rawDir に保管（clip の URL は失効済み）。",
+  "rawDir": ".claude-personal/samples-raw",
+  "posterize": 16,
+  "width": 1270,
+  "strips": [
+    {
+      "source": "01KYF8R0M0R4MW1N97AC53TQYF.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["TELEGRAPH BASILISK"],
+      "note": "取得済み（✓）。×16 DAMAGE, PIERCING / ×14 PROJECTILE MASS / +80% VELOCITY / ×8 SLOWER RELOAD",
+      "sha256": "22e72912b4cb56079cca325ed3587012c0b1e09ac8a33dddbcd7f6ec0aa675bb"
+    },
+    {
+      "source": "01KYF8R0M0R4MW1N97AC53TQYF.png",
+      "rect": [40, 228, 470, 90],
+      "names": ["EXTENDED BARREL"],
+      "note": "左パネルの TURRET 提示",
+      "sha256": "22e72912b4cb56079cca325ed3587012c0b1e09ac8a33dddbcd7f6ec0aa675bb"
+    },
+    {
+      "source": "01KYF8RDM4Z66QDCZCS5GQTBB2.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["SPLINTERING POLES"],
+      "note": "REQUIRES ADVANCED MATERIALS LAB",
+      "sha256": "5c4b97a15323fa7e9d83cee914784401d1d70dd315ae8d12521c53bd8f742151"
+    },
+    {
+      "source": "01KYF8RSFA74PSS418G48NNJ15.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["OVERWEIGHT BUNDLES"],
+      "note": "未取得ノード。ガイドにはあったが初観測",
+      "sha256": "ea5c4b8afd39c7fc2e8ecae59fa86527432f53f15d8596a19d98813f2303e4f5"
+    },
+    {
+      "source": "01KYF8S0DRXS66STQY5W3JP0D6.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["INCREASE BUNDLING RATE"],
+      "sha256": "d2b84cccb538c105c208f155c9bf5b70eb5257ef20ac06775b2480f20653f2e0"
+    },
+    {
+      "source": "01KYF9R09W1FVR36CVT47HSHHY.png",
+      "rect": [40, 228, 470, 90],
+      "names": ["REFUGEE ASYLUM SCHEME"],
+      "note": "左パネルの LIMITED OPPORTUNITY 提示。OU はゲーム内でこの見出しで出る",
+      "sha256": "3437f2b7f2b28a9a46d6168794f00ed2ec7aa21efef9ddddf4c4bb596c1dfd20"
+    },
+    {
+      "source": "01KYF9RH7QWZJNZ2NM7TX1MGND.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["HURRIED BUNDLING"],
+      "note": "未取得ノード。REQUIRES SPLINTERING POLES",
+      "sha256": "cf48aa13b55ff3561beb3aa0923599696a0c87ed55dbb72b7124e7f267923397"
+    },
+    {
+      "source": "01KYF9S523DH5RF45APWEV71NT.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["HARDENED SPLINTERS"],
+      "sha256": "04d639af044924aae055bb4dbdedca39f5f7519b54949094ec2be733108e97f1"
+    },
+    {
+      "source": "01KYF9SE66BQPTQ2HM3AKFR07C.png",
+      "rect": [55, 788, 1270, 170],
+      "names": ["INCENDIARY COATING", "OVER-FUELLED BOOSTERS"],
+      "note": "未取得ノード。OVER-FUELLED BOOSTERS は『REQUIRES OVER-FUELLED BOOSTERS』の要件文中に写る（ノード本体のツールチップではない）。綴りの根拠としては足りるが、系統・効果はこの帯からは分からない",
+      "sha256": "80b610cc4b4a6483125fc64cc6f2f32f65a1860a68d48234c63c694367e2e9fa"
+    }
+  ]
+}

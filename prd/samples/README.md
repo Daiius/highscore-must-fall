@@ -16,15 +16,18 @@
 |---|---|
 | `main-result` | 結果画面（`final_score` / `days_survived` / `apocalypse_bonus` 等） |
 | `contracts` | UPGRADE HISTORY（週グループ・取得順・リロールの灰色斜体を含む） |
+| `contracts-tree` | SIGN CONTRACTS 画面（技術ツリー）のノード説明。**未取得の名前も読める**（§4） |
 | `rewards` | REWARD LEDGER（`name` / `count` / `points`） |
 
 **この拡張子を除いたファイル名が `evidence` 識別子**になる（例 `contracts-04`）。
 `catalog-data.ts` の各エントリはこの値で「どの画像と突合したか」を示し、テストが実在を強制する
 （[`prd/08-catalog-lifecycle.md`](../08-catalog-lifecycle.md) §3）。**ここにある画像を消す/改名するとテストが落ちる。**
 
-**3 section が揃っている必要はない。** カタログの `verified` 化だけが目的なら `contracts` か
+**3 section が揃っている必要はない。** カタログの `verified` 化だけが目的なら `contracts-tree` か
 `rewards` の1枚で足りる（実際 sample-04 は `contracts-04.png` のみ）。
-run として投入・分析するなら3枚とも要る。
+run として投入・分析するなら `main-result` / `contracts` / `rewards` の3枚が要る。
+
+`contracts-tree` は**カタログ verify 専用**で、run 投入には使わない（取得履歴ではなくツリーの閲覧なので）。
 
 ## 2. 撮影規約
 
@@ -52,19 +55,32 @@ run として投入・分析するなら3枚とも要る。
 | 02 | `-02` 3枚 | coil 経路の run | upgrade 13 / reward 12 |
 | 03 | `-03` 3枚 | volley 経路の run | upgrade 13 / reward 3 |
 | 04 | `contracts-04` のみ | **blunderbuss 経路の run** | upgrade 9 |
+| tree-01 | `contracts-tree-01`（**証拠シート**） | basilisk 経路の run のツリー閲覧 | upgrade 10 |
 
 同じ名前が複数の画像に写ることはあるが、**`evidence` に書くのは1枚だけ**（根拠は1枚で足りる）。
 
-## 4. 残っている空白と、埋めるための run 条件
+容量は 01〜04 の10枚で 7.7MB、`contracts-tree-01` は10種分で 132KB。差は §5 の証拠シート方式による。
 
-`evidence: null`（＝未検証）の名前は、**その名前が出る run を回して該当 section を撮る**ことで昇格できる。
-経路ごとにまとめて回収できるので、狙う順に並べる。
+## 4. 残っている空白と、埋め方
 
-### 主砲: basilisk 経路を1本（最大の回収効率）
+### まず SIGN CONTRACTS 画面のツリーを撮る（2026-07-26 以降の既定手順）
 
-`TELEGRAPH BASILISK` / `INCREASE BUNDLING RATE` / `SPLINTERING POLES` / `HARDENED SPLINTERS` の
-4件が一度に verified 化できる。加えて `OVERWEIGHT BUNDLES`（ガイドにあるがカタログ未登録＝未観測）と
-`EXTENDED BARREL`（分岐前の共通強化）も同時に狙える。
+契約選択画面の右半分は**技術ツリー全体のブラウザ**で、ノードにカーソルを合わせると画面下部に
+名称・説明・前提条件・効果が出る。**取得していないノード・ロック中のノードも読める。**
+
+これが効くのは、従来の「その名前が出る run を回して UPGRADE HISTORY を撮る」が重すぎたからである。
+1件のために 1 run 回すのは現実的でなく、`ROBOTICS SPECIALIST` のように**そもそも出方が分からない
+名前は永久に埋まらない**。ツリーなら 1 run の途中で、到達していない枝まで舐めて回収できる。
+
+実際 `contracts-tree-01` は 1 run 分のホバーだけで、仮登録5種の昇格（`TELEGRAPH BASILISK` /
+`INCREASE BUNDLING RATE` / `SPLINTERING POLES` / `HARDENED SPLINTERS` / `EXTENDED BARREL`）と
+新規5種（`OVERWEIGHT BUNDLES` / `HURRIED BUNDLING` / `INCENDIARY COATING` /
+`OVER-FUELLED BOOSTERS` / `REFUGEE ASYLUM SCHEME`）を同時に埋めた。
+
+**撮り方**: ツリーの未取得ノードを順にホバーし、下部の帯が変わるたびに1枚撮る。1枚 = 1名称でよい
+（帯だけ切り出すので、画面の他の部分は捨てる）。左パネル（その週の提示）も名称の根拠になる。
+
+**ツリーで埋まらないもの**: reward（REWARD LEDGER にしか出ない）と、run 投入用の3枚。
 
 ### 主砲: blunderbuss 経路（優先度は低い）
 
@@ -76,25 +92,56 @@ volley の4段（`VOLLEY` → `TRIPLE` → `QUAD` → `PENT`）に対して1段�
 2. 散弾銃である基本形 `GARBAGE BLUNDERBUSS` が既に3発相当と解せば、次段が `QUAD` になるのは自然。
 
 いずれも推論であり、**UPGRADE HISTORY は取得履歴であって存在する contract の一覧ではない**ため、
-1 run の不在は不在の証明にならない。決着させるなら分岐後の選択肢画面を撮る。
+1 run の不在は不在の証明にならない。**ツリーなら決着する**——blunderbuss 枝のノードを順に見て
+`TRIPLE BLUNDERBUSS` が無ければ、ようやく不在の根拠になる。
 
-### シールド系を厚く取る run
+### シールド系
 
 `PULSE REFLEX` / `SHIELD BLAST` / `EXPANDED SHIELD NETWORK`(OU) の3件。
-`REFINED BLAST CHAMBERS` の**系統**もここで判明する可能性がある（現在は意図的に未分類）。
+`REFINED BLAST CHAMBERS` の**系統**もツリー上の位置から判明する可能性がある（現在は意図的に未分類）。
 
 ### そのほか
 
-- `ROBOTICS SPECIALIST` — ガイドの系統ツリーに無い。実測 run で2回出現。実在するなら系統を確定したい。
-- `URANIUM STRIP MINING` / `OVER-FUELLED BOOSTERS`（核）、`Q-DISRUPTOR TOWER`（自動防衛）
-  — ガイドにあるがカタログ未登録＝未観測。
+- `ROBOTICS SPECIALIST` — ガイドの系統ツリーに無い。実測 run で2回出現。**ツリーに実在するかを見れば
+  一度に片づく**（無ければ誤読の疑いが濃くなる）。
+- `URANIUM STRIP MINING`（核） / `Q-DISRUPTOR TOWER`（自動防衛） — ガイドにあるがカタログ未登録＝未観測。
 - **`THIN DRONE FACTORY` は追わない。** 正体は verified な `TWIN DRONE FACTORY` の OCR 誤読
   （`contracts-04.png`）であり、実在しない。収集対象に見えても再登録しないこと
   （[`prd/08-catalog-lifecycle.md`](../08-catalog-lifecycle.md) §7・§8）。
-- OU は抽選で提示されるため**狙って取れない**。出たら撮る。ガイド掲載20種のうち
-  カタログに載ったのは7種。
+- OU は抽選で提示されるため**狙って取れない**。出たら撮る（左パネルの `LIMITED OPPORTUNITY` 欄）。
+  ガイド掲載20種のうちカタログに載ったのは8種。
 - reward: `FIRECRACKER` / `LINE'EM UP LLOYD`。後者は綴りの確認が主目的なので拡大が要る。
+  reward はツリーに出ないので REWARD LEDGER を撮るしかない。
 
 > **`verified` の昇格は常に `catalog-data.ts` に `evidence` を書いて PR を通す**（意図的にこの経路だけにしてある。
 > 根拠がレビューに乗らないフラグは無価値なため）。カタログ管理 UI が入っても verify ボタンは付かない。
 > 手続きの正典は [`prd/08-catalog-lifecycle.md`](../08-catalog-lifecycle.md)。
+
+## 5. 証拠シート（フル解像度スクショをコミットしない方式）
+
+フル解像度スクショは1枚 1MB 前後ある。verify のたびにこれを積むとリポジトリが太るので、
+**`evidence` に置くのは「名前が読める帯だけを切り出して連結した1枚」**でよい（`contracts-tree-01.png`）。
+規約の正典は [`prd/08-catalog-lifecycle.md`](../08-catalog-lifecycle.md) §3.1。
+
+```bash
+# 1. 原本を .claude-personal/samples-raw/ に置く（gitignore。リポジトリには入れない）
+# 2. manifest（prd/samples/<sheet>.json）に原本ファイル名・切り出し矩形・写っている名前を書く
+node scripts/evidence-sheet.mjs prd/samples/contracts-tree-01.json           # シート生成（sha256 を補う）
+node scripts/evidence-sheet.mjs prd/samples/contracts-tree-01.json --verify  # 原本から再現できるか検証
+```
+
+`--verify` は**原本が手元にある環境でしか通らない**（原本は git に無い）ので、**CI には入れない**。
+綴りに疑義が出たときにローカルで回す検査である。
+
+**この方式が使えない section**: `contracts`（UPGRADE HISTORY）。リロールを**灰色斜体**で区別しており、
+グレースケール化すると色の情報が落ちる。帯の切り出しも、画面全体が名前の列なので効果が薄い。
+
+**矩形の当て方**（1330x992 のウィンドウ実測値）:
+
+| 対象 | rect `[x, y, w, h]` |
+|---|---|
+| 下部のノード説明帯 | `[55, 788, 1270, 170]` |
+| 左パネルの1項目（見出し＋名称） | `[40, 228, 470, 90]` |
+
+解像度が変われば当然ずれる。ずれたら生成物を目で見て詰めること（`node scripts/evidence-sheet.mjs` は
+上書き生成なので何度でもやり直せる）。

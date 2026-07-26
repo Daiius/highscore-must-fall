@@ -97,13 +97,22 @@ export const UPGRADES: readonly UpgradeSeed[] = [
   { name: 'SLEEPER PROTOCOL', kind: 'opportunity_upgrade', evidence: 'contracts-04' },
   { name: 'IN-FLIGHT REPAIRS', kind: 'opportunity_upgrade', evidence: 'contracts-04' },
   { name: 'ADVANCED DRONE SYSTEMS', kind: 'opportunity_upgrade', evidence: 'contracts-04' },
-  // 実測 run 由来の仮登録（6種）
-  { name: 'EXTENDED BARREL', evidence: null },
-  { name: 'HARDENED SPLINTERS', evidence: null },
-  { name: 'INCREASE BUNDLING RATE', evidence: null },
+  // contracts-tree-01.png（SIGN CONTRACTS 画面の証拠シート。10種）。
+  // UPGRADE HISTORY と違い**未取得ノードも読める**ので、run を回さずに名前を回収できる
+  // （prd/samples/README.md §4）。basilisk 経路の仮登録5種がここで一斉に昇格した。
+  { name: 'EXTENDED BARREL', evidence: 'contracts-tree-01' },
+  { name: 'HARDENED SPLINTERS', evidence: 'contracts-tree-01' },
+  { name: 'INCREASE BUNDLING RATE', evidence: 'contracts-tree-01' },
+  { name: 'SPLINTERING POLES', evidence: 'contracts-tree-01' },
+  { name: 'TELEGRAPH BASILISK', evidence: 'contracts-tree-01' },
+  { name: 'HURRIED BUNDLING', evidence: 'contracts-tree-01' },
+  { name: 'INCENDIARY COATING', evidence: 'contracts-tree-01' },
+  { name: 'OVERWEIGHT BUNDLES', evidence: 'contracts-tree-01' },
+  // 要件文「REQUIRES OVER-FUELLED BOOSTERS」に写る。綴りの根拠としては足りる（prd/08 §3）。
+  { name: 'OVER-FUELLED BOOSTERS', evidence: 'contracts-tree-01' },
+  { name: 'REFUGEE ASYLUM SCHEME', kind: 'opportunity_upgrade', evidence: 'contracts-tree-01' },
+  // 実測 run 由来の仮登録（1種）
   { name: 'PIVOT RELOAD', kind: 'opportunity_upgrade', evidence: null },
-  { name: 'SPLINTERING POLES', evidence: null },
-  { name: 'TELEGRAPH BASILISK', evidence: null },
   // 本番カタログに unverified 自動登録されていた仮登録（4種・スクショ未取得）。
   // EXPANDED SHIELD NETWORK はガイドで OU と判明しているため kind を与える。
   { name: 'EXPANDED SHIELD NETWORK', kind: 'opportunity_upgrade', evidence: null },
