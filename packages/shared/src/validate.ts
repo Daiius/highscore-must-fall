@@ -2,6 +2,7 @@
 // 入力 → Zod 構文検証（error）→ ドメイン整合チェック（warning/error）。
 // error=確定不可 / warning=確定可・要確認 を区別する（prd/03 §4・prd/04 §4）。
 
+import { DAYS_PER_WEEK, MAX_UPGRADES_PER_DAY } from './analysis'
 import { type RunRecord, RunRecordSchema } from './schema'
 
 export type IssueLevel = 'error' | 'warning'
@@ -99,12 +100,80 @@ export function checkUpgradeHistoryOrder(record: RunRecord): ValidationIssue[] {
   return issues
 }
 
+/**
+ * `max(week_index) <= ceil(days_survived / 7)`。
+ *
+ * 1週=7日（prd/01 §2）から導かれる自明な関係で、破れていればどちらかが誤読である。
+ * 本番 18 run のうち 3 件がこれで検出され、`days_survived` 側の誤読だと判明した
+ * （取得数と週構成は他の run と整合していた）。
+ *
+ * **warning に留める**理由: ゲーム側で週の長さが変わったときに、error だと投入が全部止まる。
+ * 取り込みを止めない方針（prd/06 §1.1）を推論のための検証にも適用する。
+ */
+export function checkWeekAgainstDays(record: RunRecord): ValidationIssue[] {
+  const maxWeek = record.upgrade_history.reduce((max, entry) => Math.max(max, entry.week_index), 0)
+  if (maxWeek === 0) return []
+  const weeksFromDays = Math.ceil(record.result.days_survived / DAYS_PER_WEEK)
+  if (maxWeek <= weeksFromDays) return []
+  return [
+    {
+      level: 'warning',
+      code: 'week_exceeds_days_survived',
+      message:
+        `WEEK ${maxWeek} まで記録がありますが、days_survived(${record.result.days_survived}) から` +
+        `到達しうるのは WEEK ${weeksFromDays} までです（1週=7日）。` +
+        'どちらかが読み取りミスの可能性があります。',
+      path: ['result', 'days_survived'],
+    },
+  ]
+}
+
+/**
+ * 週内の upgrade 数 <= その週に生きた日数 × 2。
+ *
+ * 1日に取れる contract は基本1個・最大2個（prd/01 §2.1）。**観測から作った閾値ではなく
+ * ゲームのルール**なので根拠にしてよい。これを超える履歴は物理的にありえず、
+ * 週グループの取り違え（2列レイアウトの列またぎ誤配）や日数の誤読を示す。
+ *
+ * 仮取得日はこの制約を前提に週内を按分するので（prd/01 §2.1）、破れたまま確定させると
+ * ありえない履歴が分析へ混入する。`days_survived` 側の誤読は `checkWeekAgainstDays` が
+ * 拾えない範囲（週数は合うが日数が足りない場合）もここで検出できる。
+ */
+export function checkAcquisitionPace(record: RunRecord): ValidationIssue[] {
+  const days = record.result.days_survived
+  const upgradesByWeek = new Map<number, number>()
+  for (const entry of record.upgrade_history) {
+    if (entry.entry_type !== 'upgrade') continue
+    upgradesByWeek.set(entry.week_index, (upgradesByWeek.get(entry.week_index) ?? 0) + 1)
+  }
+
+  const issues: ValidationIssue[] = []
+  for (const [week, count] of [...upgradesByWeek].sort((a, b) => a[0] - b[0])) {
+    const daysInWeek = Math.min(week * DAYS_PER_WEEK, days) - (week - 1) * DAYS_PER_WEEK
+    // 週そのものが days から到達不能な場合は checkWeekAgainstDays の担当（二重に出さない）。
+    if (daysInWeek <= 0) continue
+    const max = daysInWeek * MAX_UPGRADES_PER_DAY
+    if (count <= max) continue
+    issues.push({
+      level: 'warning',
+      code: 'upgrades_exceed_daily_pace',
+      message:
+        `WEEK ${week} の取得数(${count})が、その週に生きた ${daysInWeek} 日で取りうる上限(${max})を` +
+        '超えています（1日に取れるのは最大2個）。週グループか days_survived の読み取りミスの可能性があります。',
+      path: ['upgrade_history'],
+    })
+  }
+  return issues
+}
+
 /** 構文検証を通ったレコードに対する全ドメイン整合チェック。 */
 export function runConsistencyChecks(record: RunRecord): ValidationIssue[] {
   return [
     ...checkApocalypseBonus(record),
     ...checkOrderInWeekUniqueness(record),
     ...checkUpgradeHistoryOrder(record),
+    ...checkWeekAgainstDays(record),
+    ...checkAcquisitionPace(record),
   ]
 }
 

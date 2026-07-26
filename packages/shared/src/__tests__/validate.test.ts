@@ -134,3 +134,72 @@ describe('validateRunRecord', () => {
     expect(result.issues.length).toBeGreaterThan(0)
   })
 })
+
+describe('週と日数の整合（prd/01 §2.1）', () => {
+  /** WEEK w に n 個の upgrade を置く履歴を作る。 */
+  const history = (weeks: Record<number, number>) =>
+    Object.entries(weeks).flatMap(([week, n]) =>
+      Array.from({ length: n }, (_, i) => ({
+        entry_type: 'upgrade' as const,
+        week_index: Number(week),
+        order_in_week: i + 1,
+        name: 'ARC FLAIL',
+      })),
+    )
+
+  it('days から到達できない週まで記録があると warning（確定は可能）', () => {
+    const input = sampleRun()
+    const result = validateRunRecord({
+      ...input,
+      result: { ...input.result, days_survived: 10 },
+      upgrade_history: history({ 1: 12, 2: 10, 3: 5 }), // ceil(10/7)=2 なのに W3 がある
+    })
+    expect(result.ok).toBe(true)
+    const issue = result.issues.find((i) => i.code === 'week_exceeds_days_survived')
+    expect(issue?.level).toBe('warning')
+    expect(issue?.path).toEqual(['result', 'days_survived'])
+  })
+
+  it('週数と days が整合していれば warning を出さない', () => {
+    const input = sampleRun()
+    const result = validateRunRecord({
+      ...input,
+      result: { ...input.result, days_survived: 18 },
+      upgrade_history: history({ 1: 12, 2: 10, 3: 5 }),
+    })
+    expect(result.issues.some((i) => i.code === 'week_exceeds_days_survived')).toBe(false)
+  })
+
+  it('1日2個の上限を超える週は warning', () => {
+    const input = sampleRun()
+    const result = validateRunRecord({
+      ...input,
+      result: { ...input.result, days_survived: 5 },
+      upgrade_history: history({ 1: 11 }), // 5 日で 11 個は不可能（上限 10）
+    })
+    expect(result.ok).toBe(true)
+    const issue = result.issues.find((i) => i.code === 'upgrades_exceed_daily_pace')
+    expect(issue?.level).toBe('warning')
+  })
+
+  it('上限ちょうど（1日2個）は通す', () => {
+    const input = sampleRun()
+    const result = validateRunRecord({
+      ...input,
+      result: { ...input.result, days_survived: 7 },
+      upgrade_history: history({ 1: 14 }),
+    })
+    expect(result.issues.some((i) => i.code === 'upgrades_exceed_daily_pace')).toBe(false)
+  })
+
+  it('週が到達不能な場合、ペース違反を二重に出さない', () => {
+    const input = sampleRun()
+    const result = validateRunRecord({
+      ...input,
+      result: { ...input.result, days_survived: 5 },
+      upgrade_history: history({ 1: 9, 3: 4 }), // W3 は days から到達不能
+    })
+    expect(result.issues.filter((i) => i.code === 'upgrades_exceed_daily_pace')).toHaveLength(0)
+    expect(result.issues.some((i) => i.code === 'week_exceeds_days_survived')).toBe(true)
+  })
+})
