@@ -1,4 +1,4 @@
-// アップグレード（contract）の系統（series）分類。実験的機能（prd/06 Phase2 の前倒し / prd/01 §3.2）。
+// アップグレード（contract）の分類。prd/01 §3・prd/06 §1.2/§2。
 //
 // 出典は二次情報の Steam ガイド「Utopia Must Learn : A superguide for UMF」
 // （https://steamcommunity.com/sharedfiles/filedetails/?id=3433239569）＋ 一次情報スクショとの突合。
@@ -8,7 +8,34 @@
 // 未知名は 'unknown'（未分類）に落とす（分類の穴が UI 上で見えるように）。
 //
 // キーは正規形（normalizeName 済み）。テストで正規形安定性を担保する。
+//
+// ## 粒度が2つある
+//
+//   branch（11種・**こちらが正典**） … 主砲を4経路 + 共通に割ったもの。傾向分析で使う（prd/06 §2.3）。
+//   series（7種・branch からの導出） … 主砲を1つに畳んだもの。記述分析の積み上げ棒・
+//                                       ドットマトリクスで使う（prd/06 §1.2）。
+//
+// **図の仕事が違えば粒度が違ってよい。** 記述分析は run の構成を俯瞰するのが仕事なので
+// 主砲は1つで足り、11 色は知覚上の限界を超える。傾向分析は経路の優劣を見るのが仕事なので
+// 展開が要る（パネルにラベルがあるため色で識別する必要がない）。→ prd/06 §2.4。
 
+/** 主砲4経路 + 共通を展開した分類（傾向分析用・正典）。 */
+export const UPGRADE_BRANCH_KEYS = [
+  'railgun_common',
+  'volley',
+  'coil',
+  'basilisk',
+  'blunderbuss',
+  'nuke',
+  'shield',
+  'flail',
+  'automation',
+  'opportunity',
+  'unknown',
+] as const
+export type UpgradeBranch = (typeof UPGRADE_BRANCH_KEYS)[number]
+
+/** 主砲を畳んだ分類（記述分析用・branch からの導出）。 */
 export const UPGRADE_SERIES_KEYS = [
   'railgun',
   'nuke',
@@ -20,6 +47,20 @@ export const UPGRADE_SERIES_KEYS = [
 ] as const
 export type UpgradeSeries = (typeof UPGRADE_SERIES_KEYS)[number]
 
+export const UPGRADE_BRANCH_LABELS: Record<UpgradeBranch, string> = {
+  railgun_common: '主砲共通（分岐前）',
+  volley: '主砲: ヴォレー',
+  coil: '主砲: コイルガン',
+  basilisk: '主砲: バジリスク',
+  blunderbuss: '主砲: ブランダーバス',
+  nuke: '核兵器',
+  shield: 'シールド',
+  flail: 'フレイル',
+  automation: '自動防衛（タワー/ドローン）',
+  opportunity: 'OU（機会アップグレード）',
+  unknown: '未分類',
+}
+
 export const UPGRADE_SERIES_LABELS: Record<UpgradeSeries, string> = {
   railgun: 'レールガン（主砲）',
   nuke: '核兵器',
@@ -30,46 +71,64 @@ export const UPGRADE_SERIES_LABELS: Record<UpgradeSeries, string> = {
   unknown: '未分類',
 }
 
+/** branch → series の畳み込み。主砲5種だけが railgun に寄る。 */
+export const SERIES_OF_BRANCH: Record<UpgradeBranch, UpgradeSeries> = {
+  railgun_common: 'railgun',
+  volley: 'railgun',
+  coil: 'railgun',
+  basilisk: 'railgun',
+  blunderbuss: 'railgun',
+  nuke: 'nuke',
+  shield: 'shield',
+  flail: 'flail',
+  automation: 'automation',
+  opportunity: 'opportunity',
+  unknown: 'unknown',
+}
+
 /**
- * 正規名 → 系統。ガイド由来のため実際の出現名と揺れる可能性があり、
+ * 正規名 → branch。ガイド由来のため実際の出現名と揺れる可能性があり、
  * 未収載・不確かな名前は登録しない（unknown 扱いにして可視化する）。
+ *
+ * **これが分類の単一の真実**。series は SERIES_OF_BRANCH で導出する（二重管理しない）。
  */
-export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
-  // レールガン（主砲）系。OFFENSIVE INNOVATION CENTER の直後に4経路から1つを選び、
-  // 選んだ経路は run 内で排他（実データで検証済み）。経路の内訳は次の PR で branch として型化する。
-  //   volley      : VOLLEY RAILGUN → TRIPLE → QUAD → PENT
-  //   coil        : COBALT COIL GUN 配下（GRAPHENE TIPPED RODS / RICOCHET MUNITIONS はここ）
-  //   basilisk    : TELEGRAPH BASILISK 配下（BUNDLING/SPLINTER 系はここ。独立経路ではない）
+export const UPGRADE_BRANCH_BY_NAME: Record<string, UpgradeBranch> = {
+  // 主砲。OFFENSIVE INNOVATION CENTER の直後に4経路から1つを選び、選んだ経路は run 内で排他
+  // （実データで検証済み）。経路選択はプレイヤー最大の意思決定なので、核・シールド等と
+  // **同格の分類として横並びに扱う**（prd/06 §2.3）。
   //
+  // 分岐前の共通強化は railgun_common に入れる。「その run が選んだ経路に含める」案は採らない
+  // ——同じ名前が run によって違う分類になり、upgradeBranchOf(name) が純粋関数でなくなるため。
+  // INCREASE FIRE RATE は分岐前・分岐後の双方で取得できる（文脈依存）が、名前だけからは
+  // 判別できないので共通に置く。
+  'OFFENSIVE INNOVATION CENTER': 'railgun_common',
+  'EXTENDED BARREL': 'railgun_common',
+  'IMPROVE GIMBAL SPEED': 'railgun_common',
+  'INCREASE FIRE RATE': 'railgun_common',
+  'EFFICIENT RELOADING': 'railgun_common',
+  'VOLLEY RAILGUN': 'volley',
+  'TRIPLE VOLLEY RAILGUN': 'volley',
+  'QUAD VOLLEY RAILGUN': 'volley',
+  'PENT VOLLEY RAILGUN': 'volley',
+  'COBALT COIL GUN': 'coil',
+  'INCREASE COIL RATE': 'coil',
+  'RICOCHET MUNITIONS': 'coil',
+  'GRAPHENE TIPPED RODS': 'coil',
+  // basilisk 配下（BUNDLING / SPLINTER 系はここ。独立経路ではない）。
   // **前提条件は系統を跨ぐことがある**（ユーザー確認 2026-07-26）。例: INCENDIARY COATING は
   // basilisk 配下（説明が "DIP UTILITY POLE MUNITIONS…"）だが、前提は核系の OVER-FUELLED BOOSTERS。
-  // 「A の前提が B だから A は B と同系統」という推論はしないこと。
-  //   blunderbuss : GARBAGE BLUNDERBUSS 配下
-  //   共通        : 分岐前に取る強化（EXTENDED BARREL / IMPROVE GIMBAL SPEED）。
-  //                 INCREASE FIRE RATE は分岐前・分岐後の双方で取得できる（文脈依存）。
-  'VOLLEY RAILGUN': 'railgun',
-  'TRIPLE VOLLEY RAILGUN': 'railgun',
-  'QUAD VOLLEY RAILGUN': 'railgun',
-  'PENT VOLLEY RAILGUN': 'railgun',
-  'EXTENDED BARREL': 'railgun',
-  'IMPROVE GIMBAL SPEED': 'railgun',
-  'INCREASE FIRE RATE': 'railgun',
-  'EFFICIENT RELOADING': 'railgun',
-  'COBALT COIL GUN': 'railgun',
-  'INCREASE COIL RATE': 'railgun',
-  'RICOCHET MUNITIONS': 'railgun',
-  'GRAPHENE TIPPED RODS': 'railgun',
-  'TELEGRAPH BASILISK': 'railgun',
-  'INCREASE BUNDLING RATE': 'railgun',
-  'OVERWEIGHT BUNDLES': 'railgun',
-  'SPLINTERING POLES': 'railgun',
-  'HARDENED SPLINTERS': 'railgun',
-  'HURRIED BUNDLING': 'railgun',
-  'INCENDIARY COATING': 'railgun',
-  'GARBAGE BLUNDERBUSS': 'railgun',
-  'DELUXE TRASH COMPACTOR': 'railgun',
-  'QUAD BLUNDERBUSS': 'railgun',
-  'PENT BLUNDERBUSS': 'railgun',
+  // 「A の前提が B だから A は B と同分類」という推論はしないこと。
+  'TELEGRAPH BASILISK': 'basilisk',
+  'INCREASE BUNDLING RATE': 'basilisk',
+  'OVERWEIGHT BUNDLES': 'basilisk',
+  'SPLINTERING POLES': 'basilisk',
+  'HARDENED SPLINTERS': 'basilisk',
+  'HURRIED BUNDLING': 'basilisk',
+  'INCENDIARY COATING': 'basilisk',
+  'GARBAGE BLUNDERBUSS': 'blunderbuss',
+  'DELUXE TRASH COMPACTOR': 'blunderbuss',
+  'QUAD BLUNDERBUSS': 'blunderbuss',
+  'PENT BLUNDERBUSS': 'blunderbuss',
   // 核兵器系（NUCLEAR WEAPONS LAB 配下）
   'NUCLEAR WEAPONS LAB': 'nuke',
   'STOCKPILE NUKES': 'nuke',
@@ -106,7 +165,10 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
   'DEPLOY DRONE FACTORY': 'automation',
   'TWIN DRONE FACTORY': 'automation',
   'DOUBLE-BARRELLED DRONES': 'automation',
-  // OU（ガイド掲載の20種。UPGRADE HISTORY に載るものだけが記録に現れる）
+  // ユーザー確認済み（2026-07-05）: OPTIMIZED OPERATIONS = ドローン/レーザータワーの修復高速化。
+  'OPTIMIZED OPERATIONS': 'automation',
+  // OU（ガイド掲載の20種。UPGRADE HISTORY に載るものだけが記録に現れる）。
+  // 傾向分析では系統に畳まず**個別に**扱う（prd/06 §2.3）。
   'CHEAP NUKES': 'opportunity',
   'WORK RETREAT': 'opportunity',
   'SLEEPER PROTOCOL': 'opportunity',
@@ -127,21 +189,24 @@ export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = {
   'RED FLAG DAY': 'opportunity',
   'ADVANCED DRONE SYSTEMS': 'opportunity',
   'EXPANDED SHIELD NETWORK': 'opportunity',
-  // ユーザー確認済みの分類（2026-07-05）:
-  //   OFFENSIVE INNOVATION CENTER = 主砲4経路への分岐前提 → railgun
-  //   OPTIMIZED OPERATIONS = ドローン/レーザータワーの修復高速化 → automation
-  'OFFENSIVE INNOVATION CENTER': 'railgun',
-  'OPTIMIZED OPERATIONS': 'automation',
 }
 
 /**
- * 系統を割り当てない正規名（**未分類**）。「特定系統に属さないと決めた名前」と
+ * 正規名 → 系統（主砲を畳んだ粒度）。branch からの導出であり、独立に編集しない。
+ * 既存の記述分析ビューと `seed ⊆ series` テストが参照する。
+ */
+export const UPGRADE_SERIES_BY_NAME: Record<string, UpgradeSeries> = Object.fromEntries(
+  Object.entries(UPGRADE_BRANCH_BY_NAME).map(([name, branch]) => [name, SERIES_OF_BRANCH[branch]]),
+)
+
+/**
+ * 分類を割り当てない正規名（**未分類**）。「特定系統に属さないと決めた名前」と
  * 「まだ分からない名前」の**両方**がここに入る。**未分類は一級市民**であり、
  * 分類が付くまでの待避所ではなく、そのまま `unknown` バケットとして分析に乗る（prd/06 §1.1）。
  *
- * カタログ seed の全名称は、分類済み（UPGRADE_SERIES_BY_NAME）かここかのどちらかに載る必要がある
+ * カタログ seed の全名称は、分類済み（UPGRADE_BRANCH_BY_NAME）かここかのどちらかに載る必要がある
  * （database の __tests__/catalog-seed.test.ts が強制）。ゲーム更新で増えた新要素は、
- * **系統が分かるまでここに1行足せば seed に入れられる**（分類を調べ切るまで seed が止まらないように）。
+ * **分類が分かるまでここに1行足せば seed に入れられる**（分類を調べ切るまで seed が止まらないように）。
  */
 export const UPGRADE_SERIES_UNCLASSIFIED: ReadonlySet<string> = new Set([
   // 全分野に跨る高度技術の解放前提。特定系統に属さない（ユーザー確認済み）。
@@ -153,7 +218,12 @@ export const UPGRADE_SERIES_UNCLASSIFIED: ReadonlySet<string> = new Set([
   'REFINED BLAST CHAMBERS',
 ])
 
-/** 正規名から系統を引く。未収載は 'unknown'。 */
+/** 正規名から branch を引く。未収載は 'unknown'。 */
+export function upgradeBranchOf(name: string): UpgradeBranch {
+  return UPGRADE_BRANCH_BY_NAME[name] ?? 'unknown'
+}
+
+/** 正規名から系統を引く（主砲を畳んだ粒度）。未収載は 'unknown'。 */
 export function upgradeSeriesOf(name: string): UpgradeSeries {
-  return UPGRADE_SERIES_BY_NAME[name] ?? 'unknown'
+  return SERIES_OF_BRANCH[upgradeBranchOf(name)]
 }
