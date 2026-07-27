@@ -123,6 +123,16 @@ export interface TrendAnalysis {
  *
  *   仮取得日 = (w-1)*7 + L_w * (j - 0.5) / m_w
  *
+ * **返すのは「経過日数」であって、ゲーム内の『N 日目』ではない。** 値域は `(0, days_survived]` で、
+ * WEEK 1 の先頭は 0 に近い小数になる（1 日目は経過 0〜1 に対応する）。
+ * ゲーム内の日番号が要るときは `gameDayOf()` を使う。UI で「0.3 日目」と出すと、
+ * ゲームに存在しない日を実測値のように見せてしまう。
+ *
+ * **これは観測値ではなく推定値である。** 一次情報（結果画面）から確実に取れるのは
+ * 「どの週か」と「週内で何番目か」までで（prd/01 §2）、週内が等間隔だったという仮定を置いている。
+ * 取得ペースが 1.40〜1.80 個/日で安定していること（実測 18 run）が仮定の根拠だが、
+ * 個々の run で間隔が偏っていれば当然ずれる。UI では推定であることを明示する。
+ *
  * `L_w` はその週に生き延びた日数、`m_w` は週内の upgrade 数、`j` は週内で何番目の upgrade か。
  * **リロールは数えない** — contract 枠を消費せず時間を進めないため（prd/01 §3.1）。
  *
@@ -144,6 +154,14 @@ export function estimateAcquisitionDay(
   const daysInWeek = Math.max(1, Math.min(weekIndex * DAYS_PER_WEEK, daysSurvived) - weekStart)
   if (upgradesInWeek <= 0) return weekStart + daysInWeek
   return weekStart + (daysInWeek * (upgradeRankInWeek - 0.5)) / upgradesInWeek
+}
+
+/**
+ * 経過日数（`estimateAcquisitionDay` の戻り値）を**ゲーム内の日番号**に直す。
+ * 1 日目は経過 0〜1 に対応するので切り上げる。経過 0 ちょうどでも 1 日目になるよう下限を切る。
+ */
+export function gameDayOf(elapsedDays: number): number {
+  return Math.max(1, Math.ceil(elapsedDays))
 }
 
 /**

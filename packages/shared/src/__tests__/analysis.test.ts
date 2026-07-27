@@ -3,6 +3,7 @@ import {
   type AnalysisRunInput,
   buildTrendAnalysis,
   estimateAcquisitionDay,
+  gameDayOf,
   LOW_SAMPLE_THRESHOLD,
   withAcquisitionDays,
 } from '../analysis'
@@ -232,5 +233,19 @@ describe('buildTrendAnalysis', () => {
 
   it('全 branch が常に返る（取得ゼロでも行が消えない）', () => {
     expect(result.branches).toHaveLength(11)
+  })
+})
+
+describe('gameDayOf', () => {
+  it('経過日数をゲーム内の日番号に直す（1 日目は経過 0〜1）', () => {
+    expect(gameDayOf(0.29)).toBe(1)
+    expect(gameDayOf(1)).toBe(1)
+    expect(gameDayOf(1.01)).toBe(2)
+    expect(gameDayOf(6.125)).toBe(7)
+    expect(gameDayOf(21.5)).toBe(22)
+  })
+
+  it('経過 0 でも 1 日目にする（0 日目は存在しない）', () => {
+    expect(gameDayOf(0)).toBe(1)
   })
 })
