@@ -1,0 +1,59 @@
+{
+  "sheet": "contracts-tree-02",
+  "note": "SIGN CONTRACTS 画面のツリーを coil（COBALT COIL GUN）枝に沿ってホバーしたもの。帯はツリー順（基本形 → 派生）に並べてある。前提条件つきの後段（ADVANCED RICOCHET / GRAPHENE TIPPED RODS / FULL GRAPHENE COATING）は未取得ノードで、AVAILABLE IN n DAYS と REQUIRES … が読める。",
+  "origin": "2026-07-28 にユーザーが clip-dev の期限付き共有で提供（10枚）。原本は rawDir に保管。同じ名前を複数のノード/週で撮っている重複はシートに載せていない（INCREASE COIL RATE ×3 / ADVANCED RICOCHET ×2）。",
+  "rawDir": ".claude-personal/samples-raw",
+  "posterize": 16,
+  "width": 1270,
+  "strips": [
+    {
+      "source": "01KYKT1HYYQK6SDAADCWE2BXM4.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["COBALT COIL GUN"],
+      "note": "取得済み（✓）＝ coil 枝の基本形。+45% IMPACT DAMAGE / x2.5 SHIELD DAMAGE / +25% VELOCITY / -25% GIMBAL SPEED / -2.5% PROJECTILE MASS",
+      "sha256": "bd1a4b1b068764e3d2038fd7ecb254ea0f1ba23ab162e64fb1ff97f2728a8abd"
+    },
+    {
+      "source": "01KYKT1XRRJ4DF1KW5TZZ8P4XQ.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["INCREASE COIL RATE"],
+      "note": "+450 RPM FIRE RATE。ツリー上に同名ノードが複数あり（別の原本で AVAILABLE IN 2 DAYS / 3 DAYS の同名ノードを観測）、繰り返し取得できる",
+      "sha256": "b171d44af4f8cb4b2b9c636fcb9a8edd92314b6487d7c4c6efc98bee394c6c31"
+    },
+    {
+      "source": "01KYKT2MXX78TR2TH0JDKC3VWQ.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["RICOCHET MUNITIONS"],
+      "note": "+33% RICOCHET CHANCE / -50% DAMAGE DELIVERED BY SECONDARY HITS",
+      "sha256": "2fdc6d0a4387c0335fdafde7e18d7d941e3d949c8d06c2d2b2756c54738e8059"
+    },
+    {
+      "source": "01KYKT2TZ3RTT23TD1VPBYXNXH.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["ADVANCED RICOCHET"],
+      "note": "未取得ノード。RICOCHET MUNITIONS の上位（33% → 66% CHANCE）。REQUIRES ADVANCED MATERIALS LAB",
+      "sha256": "852d2c56b09e4f6b7dd525d07da9fb32b094dcccd092befd2fa58228822c0d88"
+    },
+    {
+      "source": "01KYKT2DZXCH4KHMYDP7TVN6M7.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["GRAPHENE TIPPED RODS"],
+      "note": "未取得ノード。REQUIRES ADVANCED MATERIALS LAB",
+      "sha256": "be3b2b11c171f4188eb1de15c974c2d17ecf88dc5520672d52066ea52040e83c"
+    },
+    {
+      "source": "01KYKTFQD2Y392BXQB9JJ4TPFT.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["FULL GRAPHENE COATING"],
+      "note": "未取得ノード。GRAPHENE TIPPED RODS の上位。REQUIRES OPERATION HERMIT（= OU が前提）。系統跨ぎの前提なので、これを根拠に分類を推論しないこと（shared/src/series.ts の注記）",
+      "sha256": "e4e828e65302e910601564f9961006c7575c6b54af0a8a7819e65184d5baed4f"
+    },
+    {
+      "source": "01KYKTEN2Y0Z1XAEJ3V24B92YN.png",
+      "rect": [55, 773, 1270, 185],
+      "names": ["SUPERCONDUCTING MAG RAIL"],
+      "note": "SIGN CONTRACTS 2/2 の週。+15% IMPACT DAMAGE / +10% VELOCITY。説明文が『ACCELERATE COBALT PROJECTILES…』なので coil 枝",
+      "sha256": "768ae6df7377d5f695331b848060185f01cc8629deb58c8731bda4fda81cd529"
+    }
+  ]
+}

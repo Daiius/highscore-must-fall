@@ -56,10 +56,13 @@ run として投入・分析するなら `main-result` / `contracts` / `rewards`
 | 03 | `-03` 3枚 | volley 経路の run | upgrade 13 / reward 3 |
 | 04 | `contracts-04` のみ | **blunderbuss 経路の run** | upgrade 9 |
 | tree-01 | `contracts-tree-01`（**証拠シート**） | basilisk 経路の run のツリー閲覧 | upgrade 10 |
+| tree-02 | `contracts-tree-02`（**証拠シート**） | **coil 枝**のツリー閲覧（7ノードを順にホバー） | upgrade 3 |
 
 同じ名前が複数の画像に写ることはあるが、**`evidence` に書くのは1枚だけ**（根拠は1枚で足りる）。
+`contracts-tree-02` には既に verified だった4種も写っているが、`evidence` は初出の画像のまま置いてある。
 
-容量は 01〜04 の10枚で 7.7MB、`contracts-tree-01` は10種分で 132KB。差は §5 の証拠シート方式による。
+容量は 01〜04 の10枚で 7.7MB、`contracts-tree-01` は10種分で 132KB、`contracts-tree-02` は7帯で 137KB。
+差は §5 の証拠シート方式による。
 
 ## 4. 残っている空白と、埋め方
 
@@ -76,6 +79,11 @@ run として投入・分析するなら `main-result` / `contracts` / `rewards`
 `INCREASE BUNDLING RATE` / `SPLINTERING POLES` / `HARDENED SPLINTERS` / `EXTENDED BARREL`）と
 新規5種（`OVERWEIGHT BUNDLES` / `HURRIED BUNDLING` / `INCENDIARY COATING` /
 `OVER-FUELLED BOOSTERS` / `REFUGEE ASYLUM SCHEME`）を同時に埋めた。
+
+**枝を1本ずつ舐めると系統ごと決着する。** `contracts-tree-02` は coil 枝を基本形から順にホバーして
+7ノードを1枚に収め、新規3種（`ADVANCED RICOCHET` / `FULL GRAPHENE COATING` /
+`SUPERCONDUCTING MAG RAIL`）を埋めた。この方式なら**枝の網羅性そのものが証拠に残る**ので、
+残る volley / blunderbuss / basilisk も同じ手順で片づけられる。
 
 **撮り方**: ツリーの未取得ノードを順にホバーし、下部の帯が変わるたびに1枚撮る。1枚 = 1名称でよい
 （帯だけ切り出すので、画面の他の部分は捨てる）。左パネル（その週の提示）も名称の根拠になる。
@@ -138,10 +146,13 @@ node scripts/evidence-sheet.mjs prd/samples/contracts-tree-01.json --verify  # �
 
 **矩形の当て方**（1330x992 のウィンドウ実測値）:
 
-| 対象 | rect `[x, y, w, h]` |
-|---|---|
-| 下部のノード説明帯 | `[55, 788, 1270, 170]` |
-| 左パネルの1項目（見出し＋名称） | `[40, 228, 470, 90]` |
+| 対象 | rect `[x, y, w, h]` | 実測した原本 |
+|---|---|---|
+| 下部のノード説明帯 | `[55, 788, 1270, 170]` | 1330x992（tree-01） |
+| 下部のノード説明帯 | `[55, 773, 1270, 185]` | 1326x992（tree-02） |
+| 左パネルの1項目（見出し＋名称） | `[40, 228, 470, 90]` | 1330x992（tree-01） |
 
 解像度が変われば当然ずれる。ずれたら生成物を目で見て詰めること（`node scripts/evidence-sheet.mjs` は
-上書き生成なので何度でもやり直せる）。
+上書き生成なので何度でもやり直せる）。**帯は下端揃えでなく説明の行数で上下する**ので、
+名称行が切れないよう上に余裕を取る（tree-02 で 788 だと1行目が欠けた）。
+`node scripts/evidence-sheet.mjs` の後は**必ず生成物を目で見る**——切れていてもコマンドは成功する。
