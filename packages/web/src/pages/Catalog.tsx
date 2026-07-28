@@ -13,7 +13,8 @@
 // この画面の役目は、誤読の残骸を掃除することと、**seed に足す PR を書くための材料を出すこと**。
 
 import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
+import { ArrowsPointingInIcon, ClipboardDocumentIcon, TrashIcon } from '../components/Icons'
 import { attempt } from '../lib/api-result'
 import { useAuth } from '../lib/auth'
 import {
@@ -29,6 +30,8 @@ import {
   mutationErrorMessage,
   seedSnippet,
 } from '../lib/catalog-admin'
+
+const ACTION_ICON_CLASS = 'size-3.5 shrink-0'
 
 const FILTERS: { value: CatalogFilter; label: string }[] = [
   { value: 'all', label: 'すべて' },
@@ -233,6 +236,8 @@ export function Catalog() {
 
             <div className="flex flex-wrap items-center gap-2">
               <SmallButton
+                label="統合…"
+                icon={<ArrowsPointingInIcon className={ACTION_ICON_CLASS} />}
                 onClick={() => {
                   setMergeSourceId(mergeSourceId === row.id ? null : row.id)
                   setMergeTargetId('')
@@ -243,10 +248,10 @@ export function Catalog() {
                     ? 'seed / 検証済みの名前は統合元にできません（再 seed で復活するため）'
                     : undefined
                 }
-              >
-                統合…
-              </SmallButton>
+              />
               <SmallButton
+                label="孤児削除"
+                icon={<TrashIcon className={ACTION_ICON_CLASS} />}
                 onClick={() => void runDelete(row)}
                 disabled={!row.orphan || busyId !== null}
                 tone="danger"
@@ -255,10 +260,10 @@ export function Catalog() {
                     ? '孤児（参照ゼロ・別名なし・seed 外・未検証）のみ削除できます'
                     : undefined
                 }
-              >
-                孤児削除
-              </SmallButton>
+              />
               <SmallButton
+                label="seed スニペット"
+                icon={<ClipboardDocumentIcon className={ACTION_ICON_CLASS} />}
                 onClick={() => {
                   void attempt(() => navigator.clipboard.writeText(seedSnippet(row))).then((ok) =>
                     setNotice(
@@ -268,9 +273,7 @@ export function Catalog() {
                     ),
                   )
                 }}
-              >
-                seed スニペット
-              </SmallButton>
+              />
             </div>
 
             {mergeSourceId === row.id && (
@@ -282,12 +285,12 @@ export function Catalog() {
                   value={mergeTargetId}
                   onChange={setMergeTargetId}
                 />
+                {/* 展開したパネル内の確定操作なので、狭幅でもラベルを畳まない。 */}
                 <SmallButton
+                  label="統合する"
                   onClick={() => void runMerge(row, mergeTargetId)}
                   disabled={mergeTargetId === '' || busyId !== null}
-                >
-                  統合する
-                </SmallButton>
+                />
                 <span className="text-slate-500 text-xs">
                   旧名「{row.displayName}」は別名として残り、以後の投入も統合先に名寄せされます。
                 </span>
@@ -375,17 +378,25 @@ function Toggle({
   )
 }
 
+/**
+ * 行アクションのボタン。`icon` を渡すと**狭幅ではアイコンのみ**になる（ラベルは sm 以上）。
+ * 1 行に 3 つ並ぶので、狭幅ではラベルを畳まないと 2 段に折り返してしまう。
+ * ラベルは CSS で消える＝アクセシビリティツリーからも消えるので aria-label を常に持たせる。
+ */
 function SmallButton({
-  children,
+  label,
+  icon,
   onClick,
   disabled,
   tone,
   title,
 }: {
-  children: React.ReactNode
+  label: string
+  icon?: ReactNode
   onClick: () => void
   disabled?: boolean
   tone?: 'danger'
+  /** 主に disabled の理由。指定が無ければラベルをそのまま出す。 */
   title?: string
 }) {
   const base =
@@ -399,10 +410,18 @@ function SmallButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={title}
+      title={title ?? label}
+      aria-label={label}
       className={`${base} ${color}`}
     >
-      {children}
+      {icon ? (
+        <span className="flex items-center gap-1">
+          {icon}
+          <span className="hidden sm:inline">{label}</span>
+        </span>
+      ) : (
+        label
+      )}
     </button>
   )
 }
