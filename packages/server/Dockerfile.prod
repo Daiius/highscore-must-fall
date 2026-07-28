@@ -32,6 +32,11 @@ COPY packages/server   packages/server
 
 RUN pnpm --filter server build   # → packages/server/dist/server.js（sharp は external）
 
+# migrate / seed のエントリ（→ packages/database/dist/{migrate,seed}.js）。
+# **同じイメージに同梱する**理由は、適用する SQL / カタログとコードのバージョンが
+# 構造的に一致すること（外部から流す方式は、両者がずれても何も警告されない）。
+RUN pnpm --filter database build
+
 # sharp（バンドルできないネイティブ依存）を frozen lockfile から解決した実体として取り出す。
 # deploy は既存の store（上の frozen install 由来）からコピーするだけで、レジストリ解決を伴わない
 # ＝ commit 済み pnpm-lock.yaml と minimumReleaseAge を尊重する（prd/02 §6）。
@@ -56,7 +61,20 @@ COPY --from=build /deploy/node_modules/@img        ./node_modules/@img
 COPY --from=build /deploy/node_modules/detect-libc ./node_modules/detect-libc
 COPY --from=build /deploy/node_modules/semver      ./node_modules/semver
 
-# マイグレーションはイメージに含めない。デプロイ時に別途 `pnpm db:migrate` を実行する
-# （本番運用手順は非公開の運用メモ側）。
+# migrate / seed のエントリ。**使い捨てコンテナとして明示的に実行する**（起動時の自動適用に
+# はしない——失敗時の挙動と、将来インスタンスを増やしたときの競合が読めなくなるため）。
+#
+#   docker compose run --rm <migrate service>   # command: ["node", "/app/migrate.js"]
+#   docker compose run --rm <seed service>      # command: ["node", "/app/seed.js"]
+#
+# ⚠ ENTRYPOINT を持たない（CMD が `node server.js`）ので、compose の command は
+#   **`node` から書く**。パスだけ渡す形は distroless（ENTRYPOINT=node）でしか成立しない。
+COPY --from=build /workspace/packages/database/dist/migrate.js ./migrate.js
+COPY --from=build /workspace/packages/database/dist/seed.js    ./seed.js
+
+# 生成済みの SQL。**バンドルには含まれない**（migrator が実行時に fs で読むため）。
+# ⚠ ここを忘れると、マイグレーションを流すまで気づけない。
+COPY --from=build /workspace/packages/database/drizzle ./drizzle
+
 EXPOSE 4000
 CMD ["node", "server.js"]

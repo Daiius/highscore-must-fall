@@ -52,8 +52,8 @@ pnpm typecheck    # 全パッケージ tsc --noEmit
 pnpm lint         # Biome lint
 pnpm format       # Biome format
 pnpm test         # Vitest
-pnpm db:migrate   # Drizzle マイグレーション適用
-pnpm db:seed      # 初期カタログ等のシード投入
+pnpm db:migrate   # Drizzle マイグレーション適用（本番イメージにも同じエントリを同梱。prd/02 §9.1）
+pnpm db:seed      # 初期カタログ等のシード投入（冪等）
 ```
 
 > 注: 環境変数の実体（`.env*`）はコミットしない。雛形は `*.env.example` を参照。

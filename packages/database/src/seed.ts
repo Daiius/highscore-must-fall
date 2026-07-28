@@ -15,6 +15,7 @@ import {
   type UpgradeSeed,
 } from './catalog-data'
 import { client, db, rewardCatalog, upgradeCatalog } from './index'
+import { shutdown } from './shutdown'
 
 // DB の verified は seed の evidence の投影（DB に evidence は持たせない。prd/08 §3）。
 
@@ -81,10 +82,13 @@ async function main() {
     `seeded: upgrade_catalog=${upgradeRows.length} (verified=${uv}), ` +
       `reward_catalog=${rewardRows.length} (verified=${rv})`,
   )
-  await client.end()
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+// 一発限りの CLI。終了は shutdown() に任せる（プールの close が返らなくても必ず終わる）。
+// 本番イメージからは使い捨てコンテナとして走るので、終わらないと気づきにくい。
+main()
+  .then(() => shutdown(0, client))
+  .catch((err) => {
+    console.error(err)
+    return shutdown(1, client)
+  })
