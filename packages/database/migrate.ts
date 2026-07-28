@@ -17,17 +17,16 @@
 import { fileURLToPath } from 'node:url'
 import { migrate } from 'drizzle-orm/mysql2/migrator'
 import { client, db } from './src/index'
+import { shutdown } from './src/shutdown'
 
 const migrationsFolder = fileURLToPath(new URL('./drizzle', import.meta.url))
 
-// 一発限りの CLI。プールの終了待ちに頼らず明示的に exit する
-// （同一スタックの seseraki で、tunnel 越しだと close が返らずプロセスが終わらない事例があった）。
+// 一発限りの CLI。終了は shutdown() に任せる（プールの close が返らなくても必ず終わる）。
 try {
   await migrate(db, { migrationsFolder })
   console.log('migrations applied (up to date)')
-  await client.end()
-  process.exit(0)
+  await shutdown(0, client)
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err))
-  process.exit(1)
+  await shutdown(1, client)
 }
