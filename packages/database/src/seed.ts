@@ -84,7 +84,12 @@ async function main() {
   await client.end()
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+// 一発限りの CLI。プールの終了待ちに頼らず明示的に exit する
+// （同一スタックの seseraki で、tunnel 越しだと close が返らずプロセスが終わらない事例があった）。
+// 本番イメージからは使い捨てコンテナとして走るので、終わらないと気づきにくい。
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })

@@ -8,8 +8,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "tsx esbuild.config.ts",
     "typecheck": "tsc --noEmit",
-    "migrate": "drizzle-kit migrate",
+    "migrate": "tsx migrate.ts",
     "generate": "drizzle-kit generate",
     "push": "drizzle-kit push",
     "seed": "tsx src/seed.ts"
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "drizzle-kit": "catalog:",
+    "esbuild": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"
   }
