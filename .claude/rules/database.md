@@ -45,3 +45,11 @@
 
 ## マイグレーション
 - `pnpm db:migrate` / `pnpm db:seed`。環境変数の実体はコミットしない（`.env.database`）。
+- **生成は `drizzle-kit generate`、適用は `drizzle-orm` の migrator**（`packages/database/migrate.ts`）。
+  `db:migrate` は drizzle-kit ではなくこのエントリを叩く。**dev と本番で適用経路を 1 本にするため**
+  （本番で初めて走らせる経路を作らない）。→ 正典は [`prd/02-architecture.md`](../../prd/02-architecture.md) §9.1。
+- **`migrate` / `seed` は server の本番イメージに同梱**し、使い捨てコンテナで明示実行する
+  （`docker compose run --rm <svc>` / `command: ["node", "/app/migrate.js"]`）。
+  同梱の理由は**適用する SQL・カタログとコードのバージョンが構造的に一致すること**。
+  **`migrate.ts` はパッケージルート直下に置く**——`migrationsFolder` をファイル相対で解くので、
+  `src/` に置くと dev（`packages/database/drizzle`）とバンドル後（`/app/drizzle`）でずれる。
