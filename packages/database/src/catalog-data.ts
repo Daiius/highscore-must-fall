@@ -111,6 +111,13 @@ export const UPGRADES: readonly UpgradeSeed[] = [
   // 要件文「REQUIRES OVER-FUELLED BOOSTERS」に写る。綴りの根拠としては足りる（prd/08 §3）。
   { name: 'OVER-FUELLED BOOSTERS', evidence: 'contracts-tree-01' },
   { name: 'REFUGEE ASYLUM SCHEME', kind: 'opportunity_upgrade', evidence: 'contracts-tree-01' },
+  // contracts-tree-02.png（証拠シート。coil 枝を基本形から順にホバーしたもの）。
+  // 既に verified な4種（COBALT COIL GUN / INCREASE COIL RATE / RICOCHET MUNITIONS /
+  // GRAPHENE TIPPED RODS）もシートには載っているが、evidence は初出の画像のままにする
+  // （根拠は1枚で足りる。prd/samples/README.md §3）。ここに挙げるのは新規の3種。
+  { name: 'ADVANCED RICOCHET', evidence: 'contracts-tree-02' },
+  { name: 'FULL GRAPHENE COATING', evidence: 'contracts-tree-02' },
+  { name: 'SUPERCONDUCTING MAG RAIL', evidence: 'contracts-tree-02' },
   // 実測 run 由来の仮登録（1種）
   { name: 'PIVOT RELOAD', kind: 'opportunity_upgrade', evidence: null },
   // 本番カタログに unverified 自動登録されていた仮登録（4種・スクショ未取得）。

@@ -110,10 +110,18 @@ export const UPGRADE_BRANCH_BY_NAME: Record<string, UpgradeBranch> = {
   'TRIPLE VOLLEY RAILGUN': 'volley',
   'QUAD VOLLEY RAILGUN': 'volley',
   'PENT VOLLEY RAILGUN': 'volley',
+  // coil 枝。prd/samples/contracts-tree-02.png（ツリーを基本形から順にホバーした証拠シート）で
+  // 7ノードが揃った。派生3種はいずれも説明文が COBALT / COBALT COIL の弾を指しており、
+  // 前提条件ではなく**説明文**を根拠に coil としている。
+  // FULL GRAPHENE COATING の前提は OU の OPERATION HERMIT だが、前提は系統を跨ぐので
+  // 分類の根拠にしない（上の basilisk の注記と同じ）。
   'COBALT COIL GUN': 'coil',
   'INCREASE COIL RATE': 'coil',
   'RICOCHET MUNITIONS': 'coil',
+  'ADVANCED RICOCHET': 'coil',
   'GRAPHENE TIPPED RODS': 'coil',
+  'FULL GRAPHENE COATING': 'coil',
+  'SUPERCONDUCTING MAG RAIL': 'coil',
   // basilisk 配下（BUNDLING / SPLINTER 系はここ。独立経路ではない）。
   // **前提条件は系統を跨ぐことがある**（ユーザー確認 2026-07-26）。例: INCENDIARY COATING は
   // basilisk 配下（説明が "DIP UTILITY POLE MUNITIONS…"）だが、前提は核系の OVER-FUELLED BOOSTERS。
