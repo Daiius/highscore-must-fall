@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { client } from '../api'
 import { AnalysisBadge, isAnalysisActive } from '../components/AnalysisBadge'
 import { CatalogBadges } from '../components/CatalogBadges'
+import { CheckIcon, PencilSquareIcon } from '../components/Icons'
 import { RunEditor } from '../components/RunEditor'
 import { ScreenshotSection } from '../components/ScreenshotSection'
 import { StatusBadge } from '../components/StatusBadge'
@@ -147,19 +148,24 @@ export function RunDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="flex items-center gap-3 font-bold text-white text-xl">
-            スコア {run.finalScore?.toLocaleString() ?? '—'}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {/* 狭幅ではバッジが下段へ回る（折り返しを禁止すると 1 文字ずつ縦積みになる）。 */}
+          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold text-white text-xl">
+            <span className="whitespace-nowrap">
+              スコア {run.finalScore?.toLocaleString() ?? '—'}
+            </span>
             <StatusBadge status={run.status} />
             <AnalysisBadge status={run.analysisJob?.status} />
           </h1>
           <p className="text-slate-400 text-sm">{formatDate(run.playedAt)}</p>
         </div>
-        <div className="relative flex gap-3">
+        <div className="relative flex shrink-0 gap-2 sm:gap-3">
           {/* 編集中は誤操作（確定・削除）を防ぐため、他の操作を出さない。 */}
           {mutable && !editing && (
             <>
+              {/* 狭幅ではラベルを畳んでアイコンのみにする（3 つ並ぶと折り返すため）。
+                  ラベルは CSS で消える＝アクセシビリティツリーからも消えるので aria-label を持たせる。 */}
               <button
                 type="button"
                 onClick={() => {
@@ -167,17 +173,23 @@ export function RunDetail() {
                   setEditing(true)
                 }}
                 disabled={busy}
-                className="rounded border border-slate-600 px-3 py-1.5 font-medium text-slate-200 text-sm hover:bg-slate-700 disabled:opacity-50"
+                aria-label="編集"
+                title="編集"
+                className="flex items-center gap-1.5 rounded border border-slate-600 p-2 font-medium text-slate-200 text-sm hover:bg-slate-700 disabled:opacity-50 sm:px-3 sm:py-1.5"
               >
-                編集
+                <PencilSquareIcon className="size-5 shrink-0" />
+                <span className="hidden sm:inline">編集</span>
               </button>
               <button
                 type="button"
                 onClick={() => void changeStatus('confirmed')}
                 disabled={busy}
-                className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
+                aria-label="確定する"
+                title="確定する"
+                className="flex items-center gap-1.5 rounded bg-indigo-600 p-2 font-medium text-sm text-white hover:bg-indigo-500 disabled:opacity-50 sm:px-3 sm:py-1.5"
               >
-                確定する
+                <CheckIcon className="size-5 shrink-0" />
+                <span className="hidden sm:inline">確定する</span>
               </button>
             </>
           )}
