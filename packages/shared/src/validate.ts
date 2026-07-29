@@ -133,7 +133,7 @@ export function checkWeekAgainstDays(record: RunRecord): ValidationIssue[] {
  *
  * 1日に取れる contract は基本1個・最大2個（prd/01 §2.1）。**観測から作った閾値ではなく
  * ゲームのルール**なので根拠にしてよい。これを超える履歴は物理的にありえず、
- * 週グループの取り違え（2列レイアウトの列またぎ誤配）や日数の誤読を示す。
+ * 週グループの取り違え（多列レイアウトの列またぎ誤配）や日数の誤読を示す。
  *
  * 仮取得日はこの制約を前提に週内を按分するので（prd/01 §2.1）、破れたまま確定させると
  * ありえない履歴が分析へ混入する。`days_survived` 側の誤読は `checkWeekAgainstDays` が
