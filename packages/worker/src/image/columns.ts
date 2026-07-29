@@ -52,11 +52,30 @@ const SIDE_PADDING = 6
  * **展開前に**検査させる（`decodePng` の `maxPixels`）。
  */
 const MAX_PIXELS = 20_000_000
+/**
+ * 切り出し（拡大込み）で確保してよい画素数の合計。
+ *
+ * 入力側の上限だけでは足りない。**各列は縦横とも SCALE 倍に拡大される**ので、列を合わせた
+ * 出力は元画像の最大 SCALE² 倍になり、さらに PNG エンコードが同規模の raw バッファと圧縮
+ * 出力を積む。入力が上限内でも worker のメモリを数百 MB 使いうる。ここで OOM になると
+ * catch にも「元画像で続ける」フォールバックにも到達できず、ジョブ処理ごと落ちる。
+ *
+ * 40,000,000 画素 = RGB で約 120MB。実スクショ（1330x992 の 3 列）は約 320 万画素、
+ * 4K でも収まる。これを超える画像は切らずに元画像だけで処理する。
+ */
+const MAX_OUTPUT_PIXELS = 40_000_000
 
 /** 切り出した 1 列（PNG バイト列）。`index` は左から 0 始まり。 */
 export interface ColumnImage {
   index: number
   png: Buffer
+}
+
+export interface SplitOptions {
+  /** 元画像の画素数上限（展開前に検査）。既定 `MAX_PIXELS`。 */
+  maxPixels?: number
+  /** 切り出し（拡大込み）で確保する画素数の合計上限。既定 `MAX_OUTPUT_PIXELS`。 */
+  maxOutputPixels?: number
 }
 
 /** 明るい画素が行幅の RULE_RATIO を超える行 = パネルの罫線。 */
@@ -256,10 +275,12 @@ function cropColumn(image: DecodedImage, x0: number, x1: number, y0: number, y1:
  * PNG バイト列を列画像に切り分ける。UPGRADE HISTORY らしい多列レイアウトでなければ
  * 空配列を返す（= 分割しない）。デコードできない形式・壊れた PNG でも throw せず空配列。
  */
-export function splitIntoColumns(bytes: Buffer): ColumnImage[] {
+export function splitIntoColumns(bytes: Buffer, options: SplitOptions = {}): ColumnImage[] {
+  const maxPixels = options.maxPixels ?? MAX_PIXELS
+  const maxOutputPixels = options.maxOutputPixels ?? MAX_OUTPUT_PIXELS
   let image: DecodedImage
   try {
-    image = decodePng(bytes, { maxPixels: MAX_PIXELS })
+    image = decodePng(bytes, { maxPixels })
   } catch {
     return []
   }
@@ -283,14 +304,21 @@ export function splitIntoColumns(bytes: Buffer): ColumnImage[] {
   const ranges = findColumnRanges(image, panel, y0, y1, isRuleRow)
   if (ranges.length < MIN_COLUMNS || ranges.length > MAX_COLUMNS) return []
 
-  return ranges.map(([x0, x1], index) => ({
+  const bounds = ranges.map(
+    ([x0, x1]) =>
+      [
+        Math.max(panel.left + 1, x0 - SIDE_PADDING),
+        Math.min(panel.right - 1, x1 + SIDE_PADDING),
+      ] as const,
+  )
+  // **確保する前に**見積もる（下端トリムで実際はこれより小さくなるので安全側の見積り）。
+  // 超えたら 1 枚も作らずに諦める。作りかけて OOM になると、そもそも catch に戻れない。
+  const outputPixels =
+    bounds.reduce((sum, [x0, x1]) => sum + (x1 - x0 + 1) * (y1 - y0 + 1), 0) * SCALE * SCALE
+  if (outputPixels > maxOutputPixels) return []
+
+  return bounds.map(([x0, x1], index) => ({
     index,
-    png: cropColumn(
-      image,
-      Math.max(panel.left + 1, x0 - SIDE_PADDING),
-      Math.min(panel.right - 1, x1 + SIDE_PADDING),
-      y0,
-      y1,
-    ),
+    png: cropColumn(image, x0, x1, y0, y1),
   }))
 }

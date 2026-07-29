@@ -394,6 +394,33 @@ describe('splitIntoColumns', () => {
     })
   })
 
+  // 入力側の上限だけでは足りない。各列は縦横とも 2 倍に拡大されるので、出力は元画像の
+  // 最大 4 倍になり、PNG エンコードがさらに同規模のバッファを積む。作りかけて OOM になると
+  // catch にもフォールバックにも戻れないので、確保する前に見積もって諦める。
+  describe('拡大後のメモリ見積り', () => {
+    const png = () =>
+      synthesize([
+        { x0: 30, x1: 180 },
+        { x0: 230, x1: 380 },
+      ])
+
+    it('拡大後の合計が上限を超えるなら 1 枚も作らない', () => {
+      expect(splitIntoColumns(png(), { maxOutputPixels: 1_000 })).toEqual([])
+    })
+
+    it('上限に収まるなら従来どおり切る', () => {
+      expect(splitIntoColumns(png(), { maxOutputPixels: 100_000_000 })).toHaveLength(2)
+      expect(splitIntoColumns(png())).toHaveLength(2) // 既定値
+    })
+
+    // 見積りは「拡大後の画素数」でなければならない（元画像の画素数で見ると 4 倍を見落とす）
+    it('見積りは拡大後の画素数で行う', () => {
+      const image = decodePng(png())
+      const naive = image.width * image.height // 拡大を勘定に入れない見積り
+      expect(splitIntoColumns(png(), { maxOutputPixels: naive })).toEqual([])
+    })
+  })
+
   // alpha チャンネルを持たない grayscale / truecolor では、tRNS が「この色は透明」を意味する。
   // 解釈せずに使うと、元画像では透明だった画素が切り出し画像に不透明な色として現れる
   // （alpha 付きで塞いだのと同じ穴が別の経路で開く）。扱えないので元画像へ落とす。
