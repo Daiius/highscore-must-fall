@@ -48,8 +48,8 @@ const BOTTOM_MARGIN = 6
  */
 const SIDE_PADDING = 6
 /**
- * デコードを試みる画素数の上限（幅 × 高さ）。展開後のメモリを見積もれないまま
- * inflate しないための歯止め。4K 相当（3840x2160）の 2 倍強。
+ * 受け付ける画素数の上限（幅 × 高さ）。4K 相当（3840x2160）の 2 倍強。
+ * **展開前に**検査させる（`decodePng` の `maxPixels`）。
  */
 const MAX_PIXELS = 20_000_000
 
@@ -253,11 +253,10 @@ function cropColumn(image: DecodedImage, x0: number, x1: number, y0: number, y1:
 export function splitIntoColumns(bytes: Buffer): ColumnImage[] {
   let image: DecodedImage
   try {
-    image = decodePng(bytes)
+    image = decodePng(bytes, { maxPixels: MAX_PIXELS })
   } catch {
     return []
   }
-  if (image.width * image.height > MAX_PIXELS) return []
   if (image.width < 100 || image.height < 100) return []
 
   // パネルの上下を囲む罫線が無い画面（結果画面など）は対象外。

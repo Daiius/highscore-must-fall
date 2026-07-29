@@ -40,11 +40,24 @@ function crc32(buf: Buffer): number {
   return (c ^ 0xffffffff) >>> 0
 }
 
+/** 幅・高さの上限。`width * height` が number の安全整数を超えないための歯止め。 */
+const MAX_DIMENSION = 100_000
+
+export interface DecodeOptions {
+  /** 展開後の画素数（幅 × 高さ）の上限。**inflate する前に**検査する。 */
+  maxPixels?: number
+}
+
 /**
  * PNG（8bit・非インタレース）をデコードする。対応外の形式は throw する
  * （呼び出し側は列分割を諦めて元画像のまま進む）。
+ *
+ * **サイズの検査は展開前に行う。** 圧縮された PNG はアップロード上限に収まっていても
+ * 展開後は桁違いに大きくなりうる（zip bomb）。展開してから画素数を見ていては、
+ * 制限が効く前に同期 inflate と画素バッファ確保が走り、worker が OOM で落ちる
+ * ＝「分割に失敗したら元画像で続ける」フォールバックにも到達できない。
  */
-export function decodePng(bytes: Buffer): DecodedImage {
+export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedImage {
   let offset = 8
   let header: {
     width: number
@@ -78,9 +91,19 @@ export function decodePng(bytes: Buffer): DecodedImage {
   const channels = CHANNELS_BY_COLOR_TYPE[header.color]
   if (!channels) throw new Error(`PNG: 未対応のカラータイプ ${header.color}`)
 
-  const raw = inflateSync(Buffer.concat(idat))
   const { width, height } = header
+  if (width < 1 || height < 1 || width > MAX_DIMENSION || height > MAX_DIMENSION) {
+    throw new Error(`PNG: 寸法が範囲外（${width}x${height}）`)
+  }
+  const { maxPixels } = options
+  if (maxPixels !== undefined && width * height > maxPixels) {
+    throw new Error(`PNG: 画素数が上限を超えます（${width}x${height} > ${maxPixels}）`)
+  }
+
   const stride = width * channels
+  // 非インタレースの生データは「フィルタ種別 1 byte + 1 行」の繰り返しで、長さが確定する。
+  // inflate の出力をここで打ち切れば、展開後の巨大化そのものを防げる（上限超過は throw）。
+  const raw = inflateSync(Buffer.concat(idat), { maxOutputLength: height * (stride + 1) })
   const data = Buffer.alloc(height * stride)
   let read = 0
   for (let y = 0; y < height; y++) {

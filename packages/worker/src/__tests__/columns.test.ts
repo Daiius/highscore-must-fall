@@ -206,4 +206,18 @@ describe('splitIntoColumns', () => {
   it('PNG でないバイト列は切らない（throw しない）', () => {
     expect(splitIntoColumns(Buffer.from('not a png'))).toEqual([])
   })
+
+  // 圧縮された PNG はアップロード上限に収まっていても展開後は桁違いに大きくなりうる。
+  // 展開してから画素数を見ていては、制限が効く前に inflate と画素バッファ確保が走る。
+  it('展開後が巨大になる PNG は、展開する前に諦める', () => {
+    // IHDR の幅・高さだけを巨大な値に差し替える（圧縮データは小さいまま = 展開後に膨らむ形）
+    const forged = Buffer.from(synthesize([{ x0: 30, x1: 180 }]))
+    forged.writeUInt32BE(60_000, 16)
+    forged.writeUInt32BE(60_000, 20)
+
+    const before = process.memoryUsage().heapTotal
+    expect(splitIntoColumns(forged)).toEqual([])
+    // 36 億画素ぶんのバッファを確保していない（確保していれば OOM か大幅増になる）
+    expect(process.memoryUsage().heapTotal - before).toBeLessThan(100 * 1024 * 1024)
+  })
 })
