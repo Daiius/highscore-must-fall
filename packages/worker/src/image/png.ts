@@ -24,6 +24,11 @@ export interface DecodedImage {
 
 const CHANNELS_BY_COLOR_TYPE: Record<number, number> = { 0: 1, 2: 3, 4: 2, 6: 4 }
 
+const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+/** 行フィルタの種別（0=None / 1=Sub / 2=Up / 3=Average / 4=Paeth）。 */
+const MAX_FILTER_TYPE = 4
+
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256)
   for (let n = 0; n < 256; n++) {
@@ -58,6 +63,9 @@ export interface DecodeOptions {
  * ＝「分割に失敗したら元画像で続ける」フォールバックにも到達できない。
  */
 export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedImage {
+  if (bytes.length < 8 || !bytes.subarray(0, 8).equals(SIGNATURE)) {
+    throw new Error('PNG: シグネチャが違う')
+  }
   let offset = 8
   let header: {
     width: number
@@ -67,11 +75,27 @@ export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedIm
     interlace: number
   } | null = null
   const idat: Buffer[] = []
-  while (offset + 8 <= bytes.length) {
+  let ended = false
+  while (!ended) {
+    // **壊れた PNG は必ず throw させる**（呼び出し側は元画像へフォールバックする）。
+    // 黙って 0 埋めで復号すると、それが偶然列検出条件を満たしたときに壊れた列画像が
+    // 作られ、しかもプロンプトは「列画像から読む」と指示するので誤読が保存されてしまう。
+    if (offset + 12 > bytes.length) throw new Error('PNG: チャンクが途中で切れている')
     const length = bytes.readUInt32BE(offset)
+    if (length > 0x7fffffff || offset + 12 + length > bytes.length) {
+      throw new Error('PNG: チャンク長が不正')
+    }
     const type = bytes.toString('ascii', offset + 4, offset + 8)
     const body = bytes.subarray(offset + 8, offset + 8 + length)
+    if (
+      crc32(bytes.subarray(offset + 4, offset + 8 + length)) !==
+      bytes.readUInt32BE(offset + 8 + length)
+    ) {
+      throw new Error(`PNG: ${type} チャンクの CRC が合わない`)
+    }
     if (type === 'IHDR') {
+      if (header) throw new Error('PNG: IHDR が複数ある')
+      if (length !== 13) throw new Error('PNG: IHDR の長さが不正')
       header = {
         width: body.readUInt32BE(0),
         height: body.readUInt32BE(4),
@@ -80,7 +104,10 @@ export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedIm
         interlace: body[12] ?? 0,
       }
     } else if (type === 'IDAT') {
+      if (!header) throw new Error('PNG: IHDR より前に IDAT がある')
       idat.push(body)
+    } else if (type === 'IEND') {
+      ended = true
     }
     offset += 12 + length
   }
@@ -100,14 +127,22 @@ export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedIm
     throw new Error(`PNG: 画素数が上限を超えます（${width}x${height} > ${maxPixels}）`)
   }
 
+  if (idat.length === 0) throw new Error('PNG: IDAT が無い')
+
   const stride = width * channels
   // 非インタレースの生データは「フィルタ種別 1 byte + 1 行」の繰り返しで、長さが確定する。
   // inflate の出力をここで打ち切れば、展開後の巨大化そのものを防げる（上限超過は throw）。
-  const raw = inflateSync(Buffer.concat(idat), { maxOutputLength: height * (stride + 1) })
+  const expectedRawLength = height * (stride + 1)
+  const raw = inflateSync(Buffer.concat(idat), { maxOutputLength: expectedRawLength })
+  // 短ければ足りない画素が 0 で埋まる＝切り詰められた画像を正常として通してしまう。
+  if (raw.length !== expectedRawLength) {
+    throw new Error(`PNG: 展開後の長さが合わない（${raw.length} != ${expectedRawLength}）`)
+  }
   const data = Buffer.alloc(height * stride)
   let read = 0
   for (let y = 0; y < height; y++) {
     const filter = raw[read++] ?? 0
+    if (filter > MAX_FILTER_TYPE) throw new Error(`PNG: 未知の行フィルタ ${filter}`)
     const line = raw.subarray(read, read + stride)
     read += stride
     const cur = data.subarray(y * stride, (y + 1) * stride)

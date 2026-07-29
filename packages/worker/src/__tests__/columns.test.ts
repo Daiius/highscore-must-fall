@@ -288,14 +288,96 @@ describe('splitIntoColumns', () => {
   // 圧縮された PNG はアップロード上限に収まっていても展開後は桁違いに大きくなりうる。
   // 展開してから画素数を見ていては、制限が効く前に inflate と画素バッファ確保が走る。
   it('展開後が巨大になる PNG は、展開する前に諦める', () => {
-    // IHDR の幅・高さだけを巨大な値に差し替える（圧縮データは小さいまま = 展開後に膨らむ形）
+    // IHDR の幅・高さだけを巨大な値に差し替える（圧縮データは小さいまま = 展開後に膨らむ形）。
+    // CRC も振り直す。壊れたチャンクとして弾かれてしまうと、サイズ検査の順序を検証できない。
     const forged = Buffer.from(synthesize([{ x0: 30, x1: 180 }]))
     forged.writeUInt32BE(60_000, 16)
     forged.writeUInt32BE(60_000, 20)
+    forged.writeUInt32BE(crc32(forged.subarray(12, 29)), 29)
 
     const before = process.memoryUsage().heapTotal
     expect(splitIntoColumns(forged)).toEqual([])
     // 36 億画素ぶんのバッファを確保していない（確保していれば OOM か大幅増になる）
     expect(process.memoryUsage().heapTotal - before).toBeLessThan(100 * 1024 * 1024)
+  })
+
+  // 壊れた PNG を 0 埋めで復号すると、それが偶然列検出条件を満たしたときに壊れた列画像が
+  // 作られる。プロンプトは「列画像から読む」と指示するので、誤読がそのまま保存されてしまう。
+  describe('壊れた PNG は元画像へのフォールバックに落とす', () => {
+    const valid = () =>
+      Buffer.from(
+        synthesize([
+          { x0: 30, x1: 180 },
+          { x0: 230, x1: 380 },
+        ]),
+      )
+
+    // **IHDR の CRC だけ**を壊す。IDAT を壊すと zlib 自身のチェックサムが先に落ちるので、
+    // CRC 検証の有無を区別できない（中身は正しいまま CRC だけ不一致にする必要がある）。
+    it('チャンクの CRC が合わなければ切らない', () => {
+      const forged = valid()
+      forged.writeUInt32BE(forged.readUInt32BE(29) ^ 0xffffffff, 29)
+      expect(splitIntoColumns(forged)).toEqual([])
+    })
+
+    it('展開後の長さが足りなければ切らない', () => {
+      // 高さだけを倍にする（圧縮データはそのまま = 展開後が期待より短くなる）
+      const forged = valid()
+      forged.writeUInt32BE(HEIGHT * 2, 20)
+      forged.writeUInt32BE(crc32(forged.subarray(12, 29)), 29)
+      expect(splitIntoColumns(forged)).toEqual([])
+    })
+
+    it('IEND に到達しなければ切らない', () => {
+      const forged = valid()
+      expect(splitIntoColumns(forged.subarray(0, forged.length - 12))).toEqual([])
+    })
+
+    // **フィルタ以外は正常で、切れば 2 列になる画像**にする。全面 0 の画像だと検証が無くても
+    // 「罫線が無いので切らない」になってしまい、フィルタ検証の有無を区別できない。
+    it('未知の行フィルタがあれば切らない', () => {
+      const stride = WIDTH * 3
+      const raw = Buffer.alloc(HEIGHT * (stride + 1)) // 各行の先頭は filter=0（None）
+      const put = (x: number, y: number, value: number) => {
+        const base = y * (stride + 1) + 1 + x * 3
+        raw[base] = value
+        raw[base + 1] = value
+        raw[base + 2] = value
+      }
+      for (let x = PANEL_LEFT; x <= PANEL_RIGHT; x++) {
+        put(x, PANEL_TOP, 200)
+        put(x, PANEL_BOTTOM, 200)
+      }
+      let row = 0
+      for (let y = PANEL_TOP + 20; y < PANEL_BOTTOM - 10; y += 4, row++) {
+        for (let x = 30; x <= 180 - (row % 4) * 24; x += 2) put(x, y, 200)
+        for (let x = 230; x <= 380 - (row % 4) * 24; x += 2) put(x, y, 200)
+      }
+      const chunk = (type: string, payload: Buffer): Buffer => {
+        const out = Buffer.alloc(8 + payload.length + 4)
+        out.writeUInt32BE(payload.length, 0)
+        out.write(type, 4, 'ascii')
+        payload.copy(out, 8)
+        out.writeUInt32BE(crc32(out.subarray(4, 8 + payload.length)), 8 + payload.length)
+        return out
+      }
+      const ihdr = Buffer.alloc(13)
+      ihdr.writeUInt32BE(WIDTH, 0)
+      ihdr.writeUInt32BE(HEIGHT, 4)
+      ihdr[8] = 8
+      ihdr[9] = 2
+      const build = () =>
+        Buffer.concat([
+          Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+          chunk('IHDR', ihdr),
+          chunk('IDAT', deflateSync(raw, { level: constants.Z_BEST_COMPRESSION })),
+          chunk('IEND', Buffer.alloc(0)),
+        ])
+      // まず「フィルタが正しければ 2 列に切れる」ことを確かめる（比較対象）
+      expect(splitIntoColumns(build())).toHaveLength(2)
+
+      raw[0] = 5 // 1 行目のフィルタ種別だけ未知の値にする
+      expect(splitIntoColumns(build())).toEqual([])
+    })
   })
 })
