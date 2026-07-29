@@ -8,9 +8,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { screenshotExtractionJsonSchema } from 'shared'
 import type { WorkerConfig } from './config'
+import { splitIntoColumns } from './image/columns'
 import { renderLlmCommand, usesOutputFile } from './llm-command'
 import { parseExtractionOutput } from './output'
-import { buildExtractionPrompt } from './prompt'
+import { buildExtractionPrompt, type PromptImage } from './prompt'
 import type { ClaimedJob, WorkerApi } from './server-client'
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
@@ -125,6 +126,40 @@ function describeFailure(prefix: string, result: CommandResult): string {
 }
 
 /**
+ * 多列レイアウトの画像を列ごとに切り出して並べる（prd/04 §9.3）。
+ *
+ * UPGRADE HISTORY は列を跨いで並びが連続するため、1 枚のまま読ませると後ろの週が前の週へ
+ * 吸い込まれる。列ごとに渡すと読み順の曖昧さが構造的に消える（詳細は image/columns.ts）。
+ *
+ * **これは補助であって前提ではない**。切れない画像（PNG 以外・レイアウトを検出できない・
+ * 読み書きの失敗）は黙って元画像だけで進む。列画像が無いときはプロンプトが従来のルールに
+ * 切り替わるので、ここで失敗させる理由がない。
+ */
+async function buildColumnImages(
+  job: ClaimedJob,
+  workDir: string,
+  originals: PromptImage[],
+): Promise<PromptImage[]> {
+  const columns: PromptImage[] = []
+  for (const [index, image] of job.images.entries()) {
+    if (image.contentType !== 'image/png') continue
+    const source = originals[index]
+    if (!source) continue
+    try {
+      for (const column of splitIntoColumns(await readFile(source.path))) {
+        const dest = path.join(workDir, `image-${index}-col-${column.index + 1}.png`)
+        await writeFile(dest, column.png)
+        columns.push({ path: dest, derived: { sourceIndex: index, column: column.index + 1 } })
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      console.warn(`[worker] run ${job.runId}: 画像 ${index} の列分割をスキップ — ${message}`)
+    }
+  }
+  return columns
+}
+
+/**
  * claim 済みジョブを 1 件処理する。成功時は complete、あらゆる失敗は fail 報告に落とす。
  * fail 報告自体の失敗は投げ直す（daemon がログして次の poll へ。lease 超過が最終的に回収する）。
  */
@@ -137,13 +172,16 @@ export async function processJob(
   try {
     try {
       // 画像を index 順のファイル名で保存（プロンプト・添付・complete の対応の基準）。
-      const imagePaths: string[] = []
+      const promptImages: PromptImage[] = []
       for (const [index, image] of job.images.entries()) {
         const ext = EXT_BY_CONTENT_TYPE[image.contentType] ?? 'bin'
         const dest = path.join(workDir, `image-${index}.${ext}`)
         await api.downloadImage(job.runId, image.id, dest, job.attemptCount)
-        imagePaths.push(dest)
+        promptImages.push({ path: dest })
       }
+      // 列画像は**元画像の後ろ**に足す（images の分類は元画像の index に対して行わせる）。
+      promptImages.push(...(await buildColumnImages(job, workDir, promptImages)))
+      const imagePaths = promptImages.map((image) => image.path)
 
       const schemaPath = path.join(workDir, 'extraction.schema.json')
       const schemaJson = JSON.stringify(screenshotExtractionJsonSchema())
@@ -157,7 +195,7 @@ export async function processJob(
         imagePaths,
         model: config.llmModel,
       })
-      const prompt = buildExtractionPrompt(imagePaths)
+      const prompt = buildExtractionPrompt(promptImages)
       // {output} 構成では実行中もファイルサイズを監視させる（stdout 構成では監視不要）。
       const watchOutputPath = usesOutputFile(config.llmCommand) ? outputPath : undefined
       const result = await runCommand(command, prompt, config.llmTimeoutMs, watchOutputPath)
