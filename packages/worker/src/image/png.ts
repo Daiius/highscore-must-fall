@@ -75,6 +75,7 @@ export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedIm
     interlace: number
   } | null = null
   const idat: Buffer[] = []
+  let transparency = false
   let ended = false
   while (!ended) {
     // **壊れた PNG は必ず throw させる**（呼び出し側は元画像へフォールバックする）。
@@ -106,6 +107,8 @@ export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedIm
     } else if (type === 'IDAT') {
       if (!header) throw new Error('PNG: IHDR より前に IDAT がある')
       idat.push(body)
+    } else if (type === 'tRNS') {
+      transparency = true
     } else if (type === 'IEND') {
       ended = true
     }
@@ -117,6 +120,12 @@ export function decodePng(bytes: Buffer, options: DecodeOptions = {}): DecodedIm
   }
   const channels = CHANNELS_BY_COLOR_TYPE[header.color]
   if (!channels) throw new Error(`PNG: 未対応のカラータイプ ${header.color}`)
+  // alpha チャンネルを持たない grayscale / truecolor では、tRNS が「この色は透明」を意味する。
+  // 解釈せずに使うと、元画像では透明だった画素が切り出し画像に不透明な色として現れる
+  // （alpha 付きで直したのと同じ穴が、別の経路で開く）。扱えないので元画像へ落とす。
+  if (transparency && (header.color === 0 || header.color === 2)) {
+    throw new Error('PNG: tRNS（カラーキー透過）付きは未対応')
+  }
 
   const { width, height } = header
   if (width < 1 || height < 1 || width > MAX_DIMENSION || height > MAX_DIMENSION) {

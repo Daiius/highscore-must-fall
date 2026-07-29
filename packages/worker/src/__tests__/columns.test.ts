@@ -23,7 +23,7 @@ interface Block {
   x1: number
 }
 
-/** PNG チャンクの CRC32（alpha 付き PNG をテスト内で組み立てるために要る）。 */
+/** PNG チャンクの CRC32（特殊な PNG をテスト内で組み立てるために要る）。 */
 function crc32(buf: Buffer): number {
   let c = 0xffffffff
   for (const b of buf) {
@@ -31,6 +31,56 @@ function crc32(buf: Buffer): number {
     for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
   }
   return (c ^ 0xffffffff) >>> 0
+}
+
+/** 長さ + 種別 + 中身 + CRC の PNG チャンク。 */
+function chunk(type: string, payload: Buffer): Buffer {
+  const out = Buffer.alloc(8 + payload.length + 4)
+  out.writeUInt32BE(payload.length, 0)
+  out.write(type, 4, 'ascii')
+  payload.copy(out, 8)
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + payload.length)), 8 + payload.length)
+  return out
+}
+
+/** 生データ（フィルタ種別込み）とカラータイプから PNG を組み立てる。 */
+function buildPng(raw: Buffer, colorType: number, extra: Buffer = Buffer.alloc(0)): Buffer {
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(WIDTH, 0)
+  ihdr.writeUInt32BE(HEIGHT, 4)
+  ihdr[8] = 8
+  ihdr[9] = colorType
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    extra,
+    chunk('IDAT', deflateSync(raw, { level: constants.Z_BEST_COMPRESSION })),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+/**
+ * 「切れば 2 列になる」生データを作る（フィルタは全行 0 = None）。
+ * `channels` は 1=grayscale / 3=truecolor。破損や透過の検証で、**正常なら切れる**画像を
+ * 土台にするために要る（全面 0 の画像だと「罫線が無いので切らない」に落ちて区別できない）。
+ */
+function twoColumnRaw(channels: 1 | 3): Buffer {
+  const stride = WIDTH * channels
+  const raw = Buffer.alloc(HEIGHT * (stride + 1))
+  const put = (x: number, y: number, value: number) => {
+    const base = y * (stride + 1) + 1 + x * channels
+    for (let c = 0; c < channels; c++) raw[base + c] = value
+  }
+  for (let x = PANEL_LEFT; x <= PANEL_RIGHT; x++) {
+    put(x, PANEL_TOP, 200)
+    put(x, PANEL_BOTTOM, 200)
+  }
+  let row = 0
+  for (let y = PANEL_TOP + 20; y < PANEL_BOTTOM - 10; y += 4, row++) {
+    for (let x = 30; x <= 180 - (row % 4) * 24; x += 2) put(x, y, 200)
+    for (let x = 230; x <= 380 - (row % 4) * 24; x += 2) put(x, y, 200)
+  }
+  return raw
 }
 
 interface Options {
@@ -336,48 +386,29 @@ describe('splitIntoColumns', () => {
     // **フィルタ以外は正常で、切れば 2 列になる画像**にする。全面 0 の画像だと検証が無くても
     // 「罫線が無いので切らない」になってしまい、フィルタ検証の有無を区別できない。
     it('未知の行フィルタがあれば切らない', () => {
-      const stride = WIDTH * 3
-      const raw = Buffer.alloc(HEIGHT * (stride + 1)) // 各行の先頭は filter=0（None）
-      const put = (x: number, y: number, value: number) => {
-        const base = y * (stride + 1) + 1 + x * 3
-        raw[base] = value
-        raw[base + 1] = value
-        raw[base + 2] = value
-      }
-      for (let x = PANEL_LEFT; x <= PANEL_RIGHT; x++) {
-        put(x, PANEL_TOP, 200)
-        put(x, PANEL_BOTTOM, 200)
-      }
-      let row = 0
-      for (let y = PANEL_TOP + 20; y < PANEL_BOTTOM - 10; y += 4, row++) {
-        for (let x = 30; x <= 180 - (row % 4) * 24; x += 2) put(x, y, 200)
-        for (let x = 230; x <= 380 - (row % 4) * 24; x += 2) put(x, y, 200)
-      }
-      const chunk = (type: string, payload: Buffer): Buffer => {
-        const out = Buffer.alloc(8 + payload.length + 4)
-        out.writeUInt32BE(payload.length, 0)
-        out.write(type, 4, 'ascii')
-        payload.copy(out, 8)
-        out.writeUInt32BE(crc32(out.subarray(4, 8 + payload.length)), 8 + payload.length)
-        return out
-      }
-      const ihdr = Buffer.alloc(13)
-      ihdr.writeUInt32BE(WIDTH, 0)
-      ihdr.writeUInt32BE(HEIGHT, 4)
-      ihdr[8] = 8
-      ihdr[9] = 2
-      const build = () =>
-        Buffer.concat([
-          Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-          chunk('IHDR', ihdr),
-          chunk('IDAT', deflateSync(raw, { level: constants.Z_BEST_COMPRESSION })),
-          chunk('IEND', Buffer.alloc(0)),
-        ])
-      // まず「フィルタが正しければ 2 列に切れる」ことを確かめる（比較対象）
-      expect(splitIntoColumns(build())).toHaveLength(2)
+      const raw = twoColumnRaw(3)
+      expect(splitIntoColumns(buildPng(raw, 2))).toHaveLength(2) // 比較対象
 
       raw[0] = 5 // 1 行目のフィルタ種別だけ未知の値にする
-      expect(splitIntoColumns(build())).toEqual([])
+      expect(splitIntoColumns(buildPng(raw, 2))).toEqual([])
     })
+  })
+
+  // alpha チャンネルを持たない grayscale / truecolor では、tRNS が「この色は透明」を意味する。
+  // 解釈せずに使うと、元画像では透明だった画素が切り出し画像に不透明な色として現れる
+  // （alpha 付きで塞いだのと同じ穴が別の経路で開く）。扱えないので元画像へ落とす。
+  describe('tRNS（カラーキー透過）付きは切らない', () => {
+    const cases = [
+      { label: 'truecolor', colorType: 2, channels: 3 as const, trns: Buffer.alloc(6) },
+      { label: 'grayscale', colorType: 0, channels: 1 as const, trns: Buffer.alloc(2) },
+    ]
+    for (const { label, colorType, channels, trns } of cases) {
+      it(`${label} + tRNS は切らない`, () => {
+        const raw = twoColumnRaw(channels)
+        // tRNS が無ければ 2 列に切れる画像であることを先に確かめる（比較対象）
+        expect(splitIntoColumns(buildPng(raw, colorType))).toHaveLength(2)
+        expect(splitIntoColumns(buildPng(raw, colorType, chunk('tRNS', trns)))).toEqual([])
+      })
+    }
   })
 })
