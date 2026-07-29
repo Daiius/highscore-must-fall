@@ -52,12 +52,45 @@ describe('buildExtractionPrompt', () => {
     })
 
     it('行は列画像から読ませ、列画像を跨ぐ継続を明示する', () => {
-      expect(prompt).toContain('行はこの列画像から読む')
+      expect(prompt).toContain('列画像が付いている元画像の行は、元画像でなくその列画像から読む')
       expect(prompt).toContain('列画像の先頭に WEEK 見出しが無ければ')
       expect(prompt).toContain('どの列画像も丸ごと落としていないか')
       // 1 枚の中で列を辿るルールは列画像があるときは要らない（読み順は画像の並びで決まる）
       expect(prompt).not.toContain('まず列が何本あるか数える')
     })
+  })
+
+  // 列画像は多列レイアウトを検出できた画像にしか付かない。REWARD LEDGER は意図的に切らない
+  // ので（右揃えの表で行が割れる）、一律に「行は列画像から読む」と言うと、切られていない
+  // 画面の行まで列画像から読もうとして落ちる。通常の 3 画面投入がまさにこの形。
+  describe('一部の元画像だけが分割されたとき', () => {
+    const prompt = buildExtractionPrompt([
+      { path: '/tmp/result.png' },
+      { path: '/tmp/history.png' },
+      { path: '/tmp/reward.png' },
+      { path: '/tmp/history-col-1.png', derived: { sourceIndex: 1, column: 1 } },
+      { path: '/tmp/history-col-2.png', derived: { sourceIndex: 1, column: 2 } },
+    ])
+
+    it('列画像が付いている元画像を名指しする', () => {
+      expect(prompt).toContain('列画像が付いている元画像は index 1 だけ')
+    })
+
+    it('付いていない元画像はそれ自身から読ませる', () => {
+      expect(prompt).toContain('列画像が付いていない元画像の行は、その元画像から読む')
+      expect(prompt).toContain('列画像が付いていない元画像（index 1 以外）の行を、落とさずに')
+    })
+  })
+
+  it('複数の元画像が分割されたら全ての index を挙げる', () => {
+    const prompt = buildExtractionPrompt([
+      { path: '/tmp/a.png' },
+      { path: '/tmp/b.png' },
+      { path: '/tmp/a-col-1.png', derived: { sourceIndex: 0, column: 1 } },
+      { path: '/tmp/b-col-1.png', derived: { sourceIndex: 1, column: 1 } },
+      { path: '/tmp/a-col-2.png', derived: { sourceIndex: 0, column: 2 } },
+    ])
+    expect(prompt).toContain('列画像が付いている元画像は index 0 と 1 だけ')
   })
 })
 

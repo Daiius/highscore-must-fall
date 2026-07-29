@@ -68,8 +68,8 @@ export interface PromptImage {
  * 1 枚の中で列を辿らせるしかなく、**列数を決め打つと後ろの週が前の週へ吸い込まれる**
  * （実測: WEEK 5 の 11 行が丸ごと WEEK 4 に混入）ので、列数を仮定しない書き方にする。
  */
-function columnRule(originalCount: number, hasColumns: boolean): string {
-  if (!hasColumns) {
+function columnRule(originalCount: number, splitSources: number[]): string {
+  if (splitSources.length === 0) {
     return `4. UPGRADE HISTORY は複数列レイアウト（列数は画面ごとに違う。2 列とは限らず 3 列以上のこともある）。
    まず列が何本あるか数える。読む順序は「いちばん左の列を上から下まで読み切る → 次の列の最上段へ移る」を
    最後の列まで繰り返す。行方向に横切って読まない。
@@ -77,14 +77,18 @@ function columnRule(originalCount: number, hasColumns: boolean): string {
    列の先頭に WEEK 見出しが無ければ、その列の先頭行は前の列の最後の週の続きである。
    1 つの週が列を跨いで分かれるのは普通に起きる（見出しの下に数行だけ置いて列が尽き、残りが次の列の先頭へ続く）。`
   }
-  return `4. index ${originalCount} 以降は、元のスクショを**列ごとに切り出して拡大した画像**（どの画像のどの列かは
-   上のリストに書いてある）。UPGRADE HISTORY と REWARD LEDGER の**行はこの列画像から読む**
-   （字が大きく、読む順序が一意に決まる）。元画像は分類と全体の確認にだけ使う。
+  // **列画像は一部の元画像にしか付かない**（多列レイアウトを検出できたものだけ切る）。
+  // 一律に「行は列画像から読む」と言うと、切られていない画面の行まで列画像から読もうとして
+  // 行が落ちる。どの元画像に付いているかを名指しし、付いていない画面は元画像から読ませる。
+  return `4. index ${originalCount} 以降は、元のスクショを**列ごとに切り出して拡大した画像**（どの元画像のどの列かは
+   上のリストに書いてある）。列画像が付いている元画像は index ${splitSources.join(' と ')} だけ。
+   **列画像が付いている元画像の行は、元画像でなくその列画像から読む**（字が大きく、読む順序が一意に決まる）。
+   **列画像が付いていない元画像の行は、その元画像から読む**（対応する列画像は存在しない）。
    同じ元画像から作った列画像は左の列から順に並ぶ。1 枚ずつ上から下まで読み切り、
-   その順に繋げると画面の並び順になる。行方向に横切って読まない。
-   各行は「その行より前（同じ列画像の上、または前の列画像）に最後に現れた WEEK 見出し」に属する。
-   列画像の先頭に WEEK 見出しが無ければ、その先頭行は前の列画像の最後の週の続きである。
-   1 つの週が列画像を跨いで分かれるのは普通に起きる。`
+   その順に繋げると元画像の並び順になる。行方向に横切って読まない。
+   各行は「その行より前（同じ列画像の上、または同じ元画像から作られた前の列画像）に最後に現れた
+   WEEK 見出し」に属する。列画像の先頭に WEEK 見出しが無ければ、その先頭行は前の列画像の最後の週の
+   続きである。1 つの週が列画像を跨いで分かれるのは普通に起きる。`
 }
 
 /**
@@ -96,7 +100,11 @@ function columnRule(originalCount: number, hasColumns: boolean): string {
  */
 export function buildExtractionPrompt(images: PromptImage[]): string {
   const originalCount = images.filter((image) => !image.derived).length
-  const hasColumns = images.length > originalCount
+  // 列画像が付いた元画像の index（昇順・重複なし）。付かない画面は元画像から読ませる。
+  const splitSources = [
+    ...new Set(images.flatMap((image) => (image.derived ? [image.derived.sourceIndex] : []))),
+  ].sort((a, b) => a - b)
+  const hasColumns = splitSources.length > 0
   const imageList = images
     .map((image, i) => {
       const note = image.derived
@@ -114,7 +122,7 @@ ${imageList}
 1. images には${classifyTarget}の分類を入れる（結果画面=result / UPGRADE HISTORY=upgrade_history / REWARD LEDGER=reward_ledger / どれでもない=other）。
 2. 名前は画面の綴りを一字一句そのまま（似た語に直さない・略さない。例: DIGITIZE を DIGITAL にしない）。
 3. UPGRADE HISTORY は週ごと・画面の並び順のまま全行。同名の連続もそのまま重複させる。
-${columnRule(originalCount, hasColumns)}
+${columnRule(originalCount, splitSources)}
 5. 灰色斜体の行はリロール → { "week": N, "type": "reroll", "name": null, "flavor": "<その灰色テキスト>" }。
    色付きの行は type: "upgrade"（flavor は null）。
 6. REWARD LEDGER の points は行に表示された数値（その報酬の合計点）。count（○×）とは掛けない。
@@ -127,7 +135,7 @@ ${columnRule(originalCount, hasColumns)}
    - 最終週より前に、極端に行数の少ない週（1〜2 行）が無いか。あれば列跨ぎの続きを取りこぼしている。
    - 逆に1つの週だけ極端に多くないか。あれば次の週の見出しを見落として吸い込んでいる。${
      hasColumns
-       ? '\n   - どの列画像も丸ごと落としていないか（全ての列画像の行が出力に入っているか）。'
+       ? `\n   - どの列画像も丸ごと落としていないか（全ての列画像の行が出力に入っているか）。\n   - 列画像が付いていない元画像（index ${splitSources.join(' と ')} 以外）の行を、落とさずに元画像から読んだか。`
        : ''
 }
 
