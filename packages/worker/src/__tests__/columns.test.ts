@@ -5,6 +5,7 @@
 //   結果画面 → 分割せず / REWARD LEDGER → 分割せず（行が割れるため触らない）
 // ここではその判断基準が壊れないことを押さえる。
 
+import { constants, deflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { splitIntoColumns } from '../image/columns'
 import { decodePng, encodeRgbPng } from '../image/png'
@@ -20,6 +21,16 @@ const PANEL_BOTTOM = HEIGHT - 10
 interface Block {
   x0: number
   x1: number
+}
+
+/** PNG チャンクの CRC32（alpha 付き PNG をテスト内で組み立てるために要る）。 */
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff
+  for (const b of buf) {
+    c ^= b
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+  }
+  return (c ^ 0xffffffff) >>> 0
 }
 
 interface Options {
@@ -205,6 +216,73 @@ describe('splitIntoColumns', () => {
 
   it('PNG でないバイト列は切らない（throw しない）', () => {
     expect(splitIntoColumns(Buffer.from('not a png'))).toEqual([])
+  })
+
+  // alpha を捨てて RGB だけ写すと、透明画素に非黒の RGB を持つ PNG で「検出時には見えなかった色」
+  // が切り出し画像に現れ、文字や列間の空白を覆う。列画像の側が読み取りの原本になるので実害が出る。
+  describe('透明画素の隠し色を持ち込まない', () => {
+    /** 透明部に非黒 RGB を仕込んだ alpha 付き PNG を作る（2ch = gray+alpha / 4ch = RGBA）。 */
+    const withHiddenColor = (channels: 2 | 4): Buffer => {
+      const stride = WIDTH * channels
+      const raw = Buffer.alloc(HEIGHT * (stride + 1))
+      const put = (x: number, y: number, value: number, alpha: number) => {
+        const base = y * (stride + 1) + 1 + x * channels
+        raw[base] = value
+        if (channels === 4) {
+          raw[base + 1] = value
+          raw[base + 2] = value
+        }
+        raw[base + channels - 1] = alpha
+      }
+      // 全面を「不透明な黒」で埋めてから、パネル枠と 2 列の本文を描く
+      for (let y = 0; y < HEIGHT; y++) for (let x = 0; x < WIDTH; x++) put(x, y, 0, 255)
+      for (let x = PANEL_LEFT; x <= PANEL_RIGHT; x++) {
+        put(x, PANEL_TOP, 200, 255)
+        put(x, PANEL_BOTTOM, 200, 255)
+      }
+      let row = 0
+      for (let y = PANEL_TOP + 20; y < PANEL_BOTTOM - 10; y += 4, row++) {
+        for (let x = 30; x <= 180 - (row % 4) * 24; x += 2) put(x, y, 200, 255)
+        for (let x = 230; x <= 380 - (row % 4) * 24; x += 2) put(x, y, 200, 255)
+      }
+      // **左列の内側**（テキスト行の隙間）を「完全に透明だが RGB は真っ白」で塗る。
+      // 列の外に置くと切り出し範囲に入らず、alpha を捨てる実装でもテストが通ってしまう。
+      // 不透明な画素の最大値は 200 なので、255 が出てきたら隠し色が漏れたと判る。
+      for (let y = PANEL_TOP + 22; y < PANEL_BOTTOM - 12; y += 4) {
+        for (let x = 30; x <= 180; x++) put(x, y, 255, 0)
+      }
+      const chunk = (type: string, payload: Buffer): Buffer => {
+        const out = Buffer.alloc(8 + payload.length + 4)
+        out.writeUInt32BE(payload.length, 0)
+        out.write(type, 4, 'ascii')
+        payload.copy(out, 8)
+        out.writeUInt32BE(crc32(out.subarray(4, 8 + payload.length)), 8 + payload.length)
+        return out
+      }
+      const ihdr = Buffer.alloc(13)
+      ihdr.writeUInt32BE(WIDTH, 0)
+      ihdr.writeUInt32BE(HEIGHT, 4)
+      ihdr[8] = 8
+      ihdr[9] = channels === 4 ? 6 : 4
+      return Buffer.concat([
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        chunk('IHDR', ihdr),
+        chunk('IDAT', deflateSync(raw, { level: constants.Z_BEST_COMPRESSION })),
+        chunk('IEND', Buffer.alloc(0)),
+      ])
+    }
+
+    for (const channels of [2, 4] as const) {
+      it(`${channels === 4 ? 'RGBA' : 'gray+alpha'} の透明画素は黒として切り出す`, () => {
+        const columns = splitIntoColumns(withHiddenColor(channels))
+        expect(columns).toHaveLength(2)
+        const left = decodePng((columns[0] as { png: Buffer }).png)
+        let brightest = 0
+        for (const value of left.data) brightest = Math.max(brightest, value)
+        // 不透明な文字は 200、隠した透明画素は 255。255 が出たら alpha を捨てている。
+        expect(brightest).toBe(200)
+      })
+    }
   })
 
   // 圧縮された PNG はアップロード上限に収まっていても展開後は桁違いに大きくなりうる。

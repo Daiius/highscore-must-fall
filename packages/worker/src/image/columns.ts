@@ -232,15 +232,21 @@ function cropColumn(image: DecodedImage, x0: number, x1: number, y0: number, y1:
   const h = bottom - y0 + 1
   const out = Buffer.alloc(w * SCALE * h * SCALE * 3)
   const gray = image.channels <= 2
+  const hasAlpha = image.channels === 2 || image.channels === 4
   for (let y = 0; y < h * SCALE; y++) {
     for (let x = 0; x < w * SCALE; x++) {
       const src =
         ((Math.floor(y / SCALE) + y0) * image.width + (Math.floor(x / SCALE) + x0)) * image.channels
       const dst = (y * w * SCALE + x) * 3
       const r = image.data[src] ?? 0
-      out[dst] = r
-      out[dst + 1] = gray ? r : (image.data[src + 1] ?? 0)
-      out[dst + 2] = gray ? r : (image.data[src + 2] ?? 0)
+      // alpha は **luminanceAt と同じ規則で黒背景へ合成する**。ここで捨てると、透明画素に
+      // 非黒の RGB を持つ PNG で「検出時には見えなかった色」が切り出し画像に現れ、
+      // 文字や列間の空白を覆ってしまう（列画像の側が読み取りの原本になるので実害が出る）。
+      const alpha = hasAlpha ? (image.data[src + image.channels - 1] ?? 0) : 255
+      const blend = (value: number) => Math.round((value * alpha) / 255)
+      out[dst] = blend(r)
+      out[dst + 1] = blend(gray ? r : (image.data[src + 1] ?? 0))
+      out[dst + 2] = blend(gray ? r : (image.data[src + 2] ?? 0))
     }
   }
   return encodeRgbPng(w * SCALE, h * SCALE, out)
