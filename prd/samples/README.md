@@ -61,13 +61,14 @@ WEEK 5 の 11 行が丸ごと WEEK 4 に混入した。→ worker 側の対処�
 | tree-01 | `contracts-tree-01`（**証拠シート**） | basilisk 経路の run のツリー閲覧 | upgrade 10 |
 | tree-02 | `contracts-tree-02`（**証拠シート**） | **coil 枝**のツリー閲覧（7ノードを順にホバー） | upgrade 3 |
 | tree-03 | `contracts-tree-03`（**証拠シート**） | **volley 枝**のツリー閲覧（8帯・連射数と発射レートの2方向） | upgrade 2 |
+| tree-04 | `contracts-tree-04`（**証拠シート**） | **blunderbuss 枝**のツリー閲覧（8帯・2 run 分） | upgrade 2 |
 
 同じ名前が複数の画像に写ることはあるが、**`evidence` に書くのは1枚だけ**（根拠は1枚で足りる）。
 `contracts-tree-02` には既に verified だった4種も写っているが、`evidence` は初出の画像のまま置いてある。
-`contracts-tree-03` も同様（6種が既 verified）。
+`contracts-tree-03` も同様（6種が既 verified）。`contracts-tree-04` も同様（5種が既 verified）。
 
 容量は 01〜04 の10枚で 7.7MB、`contracts-tree-01` は10種分で 132KB、`contracts-tree-02` は7帯で 137KB、
-`contracts-tree-03` は8帯で 156KB。
+`contracts-tree-03` は8帯で 156KB、`contracts-tree-04` は8帯で 143KB。
 差は §5 の証拠シート方式による。
 
 ## 4. 残っている空白と、埋め方
@@ -92,7 +93,15 @@ WEEK 5 の 11 行が丸ごと WEEK 4 に混入した。→ worker 側の対処�
 残る枝も同じ手順で片づけられる。`contracts-tree-03` は volley 枝で同じことをやり、
 `HEX VOLLEY RAILGUN`（連射数の最終段）と `EXTREME FIRE RATE`（発射レートの最終段）を埋めた。
 **枝が1方向とは限らない**のもここで分かった——基本形の説明文が伸びる方向を名指ししているので、
-ホバーする順を決めるときは基本形の説明を先に読むとよい。残るは blunderbuss。
+ホバーする順を決めるときは基本形の説明を先に読むとよい。
+`contracts-tree-04` で blunderbuss 枝（7ノード）も片づき、**主砲4経路すべてがツリー由来の証拠を持つ**
+状態になった（`SAWN-OFF BARRELS` / `ULTIMATE FIRE RATE` を新規に、`REFINED BLAST CHAMBERS` の
+系統をここで確定）。
+
+**同じ名前でも経路ごとに別ノードがある。** `INCREASE FIRE RATE` は説明文が volley 版で
+『TURRET RELOAD MECHANISMS』、blunderbuss 版で『WASTE PROCESSING AND BARREL RELOADING』と変わる。
+名前が分かれるのは最終段だけ（`EXTREME FIRE RATE` / `ULTIMATE FIRE RATE`）。
+**枝を舐めるときは、既知の名前でも説明文が違えば撮っておくとよい**——分類の根拠になる。
 
 **撮り方**: ツリーの未取得ノードを順にホバーし、下部の帯が変わるたびに1枚撮る。1枚 = 1名称でよい
 （帯だけ切り出すので、画面の他の部分は捨てる）。左パネル（その週の提示）も名称の根拠になる。
@@ -160,6 +169,7 @@ node scripts/evidence-sheet.mjs prd/samples/contracts-tree-01.json --verify  # �
 | 下部のノード説明帯 | `[55, 788, 1270, 170]` | 1330x992（tree-01） |
 | 下部のノード説明帯 | `[55, 773, 1270, 185]` | 1326x992（tree-02） |
 | 下部のノード説明帯 | `[55, 773, 1259, 185]` | 1314x992（tree-03） |
+| 下部のノード説明帯 | `[55, 760, 1275, 200]` | 1330x992（tree-04） |
 | 左パネルの1項目（見出し＋名称） | `[40, 228, 470, 90]` | 1330x992（tree-01） |
 
 解像度が変われば当然ずれる。ただし**ウィンドウ幅だけが違うなら縦は動かない**——tree-03 は
@@ -167,4 +177,7 @@ tree-02 より 12px 狭いだけ（高さは同じ 992）で、`y`/`h` をその
 （`w = 原本の幅 - x`。manifest の `width` も同じ値にする）。ずれたら生成物を目で見て詰めること（`node scripts/evidence-sheet.mjs` は
 上書き生成なので何度でもやり直せる）。**帯は下端揃えでなく説明の行数で上下する**ので、
 名称行が切れないよう上に余裕を取る（tree-02 で 788 だと1行目が欠けた）。
+**同じ解像度でも枝によって値が変わる**のはこのため——tree-04 は tree-01 と同じ 1330x992 だが、
+`GARBAGE BLUNDERBUSS` の効果が右に6行あって帯が最も高い位置から始まるので `y` を 760 まで上げ、
+`h` を 200 に広げてある。**枝の中でいちばん行数の多いノードに合わせること。**
 `node scripts/evidence-sheet.mjs` の後は**必ず生成物を目で見る**——切れていてもコマンドは成功する。
