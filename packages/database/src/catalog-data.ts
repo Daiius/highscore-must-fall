@@ -124,6 +124,10 @@ export const UPGRADES: readonly UpgradeSeed[] = [
   // ここに挙げるのは新規の2種で、どちらも未取得ノード（AVAILABLE IN n DAYS）。
   { name: 'HEX VOLLEY RAILGUN', evidence: 'contracts-tree-03' },
   { name: 'EXTREME FIRE RATE', evidence: 'contracts-tree-03' },
+  // contracts-tree-04.png（証拠シート。blunderbuss 枝を基本形から順にホバーしたもの）。
+  // 既に verified な5種もシートに載っているが、evidence は初出の画像のまま。新規は2種。
+  { name: 'SAWN-OFF BARRELS', evidence: 'contracts-tree-04' },
+  { name: 'ULTIMATE FIRE RATE', evidence: 'contracts-tree-04' },
   // 実測 run 由来の仮登録（1種）
   { name: 'PIVOT RELOAD', kind: 'opportunity_upgrade', evidence: null },
   // 本番カタログに unverified 自動登録されていた仮登録（4種・スクショ未取得）。
