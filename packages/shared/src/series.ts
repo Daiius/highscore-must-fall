@@ -100,7 +100,12 @@ export const UPGRADE_BRANCH_BY_NAME: Record<string, UpgradeBranch> = {
   // 分岐前の共通強化は railgun_common に入れる。「その run が選んだ経路に含める」案は採らない
   // ——同じ名前が run によって違う分類になり、upgradeBranchOf(name) が純粋関数でなくなるため。
   // INCREASE FIRE RATE は分岐前・分岐後の双方で取得できる（文脈依存）が、名前だけからは
-  // 判別できないので共通に置く。
+  // 判別できないので共通に置く。**経路ごとに専用ノードがあることは実測で裏が取れた**——
+  // 同じ INCREASE FIRE RATE でも説明文が volley 版は『IMPROVE THE OVERALL EFFICIENCY OF
+  // TURRET RELOAD MECHANISMS』（contracts-tree-03）、blunderbuss 版は『IMPROVE WASTE
+  // PROCESSING AND BARREL RELOADING MECHANISMS』（contracts-tree-04）と変わる。
+  // **名前が分かれるのは最終段だけ**（volley = EXTREME / blunderbuss = ULTIMATE FIRE RATE）で、
+  // そこは経路ごとの branch に置いてある。
   'OFFENSIVE INNOVATION CENTER': 'railgun_common',
   'EXTENDED BARREL': 'railgun_common',
   'IMPROVE GIMBAL SPEED': 'railgun_common',
@@ -144,10 +149,20 @@ export const UPGRADE_BRANCH_BY_NAME: Record<string, UpgradeBranch> = {
   'HARDENED SPLINTERS': 'basilisk',
   'HURRIED BUNDLING': 'basilisk',
   'INCENDIARY COATING': 'basilisk',
+  // blunderbuss 枝。prd/samples/contracts-tree-04.png で 7 ノードが揃った。
+  // **基本形の時点で ×3 GUN BARRELS** なので、volley の TRIPLE 相当は枝に無い（3 → 4 → 5）。
   'GARBAGE BLUNDERBUSS': 'blunderbuss',
   'DELUXE TRASH COMPACTOR': 'blunderbuss',
   'QUAD BLUNDERBUSS': 'blunderbuss',
   'PENT BLUNDERBUSS': 'blunderbuss',
+  'SAWN-OFF BARRELS': 'blunderbuss',
+  // volley の EXTREME FIRE RATE に対応する最終段（説明文『PROCESS WASTE AND RELOAD BARRELS…』）。
+  'ULTIMATE FIRE RATE': 'blunderbuss',
+  // contracts-04 で初出したときは系統が読めず未分類にしていたが、blunderbuss ツリーで
+  // GARBAGE BLUNDERBUSS / DELUXE TRASH COMPACTOR と同じ行に隣接して現れた（ユーザー確定
+  // 2026-07-31）。説明文『IMPROVED CHAMBER DESIGN…INCREASING PROJECTILE VELOCITY AND DAMAGE』
+  // 自体には経路特有の語彙が無いので、根拠はツリー上の位置である。
+  'REFINED BLAST CHAMBERS': 'blunderbuss',
   // 核兵器系（NUCLEAR WEAPONS LAB 配下）
   'NUCLEAR WEAPONS LAB': 'nuke',
   'STOCKPILE NUKES': 'nuke',
@@ -233,8 +248,6 @@ export const UPGRADE_SERIES_UNCLASSIFIED: ReadonlySet<string> = new Set([
   // ガイドの系統ツリーに無い。実測 run では出現するが所属不明。
   'SUPERCONDUCTING POWER LINES',
   'ROBOTICS SPECIALIST',
-  // contracts-04.png で観測。名前は核（blast chambers）にもシールド（plasma）にも読め、未確定。
-  'REFINED BLAST CHAMBERS',
 ])
 
 /** 正規名から branch を引く。未収載は 'unknown'。 */

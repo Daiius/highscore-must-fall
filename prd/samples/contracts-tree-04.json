@@ -1,0 +1,66 @@
+{
+  "sheet": "contracts-tree-04",
+  "note": "SIGN CONTRACTS 画面のツリーを blunderbuss（GARBAGE BLUNDERBUSS）枝に沿ってホバーしたもの。帯はツリー順（基本形 → 銃身数の派生 → 弾の強化 → 発射レートの派生）に並べてある。SAWN-OFF BARRELS / ULTIMATE FIRE RATE / QUAD BLUNDERBUSS は未取得ノードで、AVAILABLE IN n DAYS が読める。",
+  "origin": "2026-07-31 にユーザーが clip の期限付き共有で提供（9枚）。原本は rawDir に保管。2 つの run のツリーに跨る（PENT / ULTIMATE FIRE RATE の 2 枚だけ別 run）。同じ名前を複数ノードで撮っている重複はシートに載せていない（INCREASE FIRE RATE ×2）。",
+  "rawDir": ".claude-personal/samples-raw",
+  "posterize": 16,
+  "width": 1275,
+  "strips": [
+    {
+      "source": "01KYMKG21BN2T08NE62B8Y28B4.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["GARBAGE BLUNDERBUSS"],
+      "note": "取得済み（✓）＝ blunderbuss 枝の基本形。**基本形の時点で ×3 GUN BARRELS**（volley の TRIPLE 相当が枝に無いのはこのため）。×8 SHOTS PER BARREL / ×2 SHIELD DAMAGE / ×8 SLOWER RELOAD / DAMAGE FALLOFF",
+      "sha256": "e51e4b073a70852937a56d00fc183d0e47dc6a7bd90ea66ff3225be9c9342908"
+    },
+    {
+      "source": "01KYMKH0FAZ6HXX69YXW93P1TB.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["QUAD BLUNDERBUSS"],
+      "note": "未取得ノード（AVAILABLE IN 7 DAYS）。BLAST GARBAGE PELLETS FROM QUADRUPLE GUN BARRELS / 21% INCREASED MAXIMUM DAMAGE OVERALL",
+      "sha256": "ab0a84cf415e22bef40ce9e2ad020ab451f60f64f3d4bb27e4855c8cf773db28"
+    },
+    {
+      "source": "01KYMNAWQ3SZ304BMRV4YADSBM.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["PENT BLUNDERBUSS"],
+      "note": "別 run。提示中（SIGN CONTRACT の TURRET 欄にも出ている）。x5 GUN BARRELS / -9% FIRE RATE",
+      "sha256": "a8a5bffa37d76aba34c7b235ba549e41b3b73e1f65180c4f4d3ddd229e274677"
+    },
+    {
+      "source": "01KYMKGEV6MT2SMDBG29JXAYNS.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["DELUXE TRASH COMPACTOR"],
+      "note": "取得済み（✓）。GARBAGE PROJECTILES ARE COMPRESSED WITH EXTREME FORCE / +10% VELOCITY / -30% DAMAGE FALLOFF",
+      "sha256": "145df1114d4340c5a1694c4d24a2a1d8a82ed67caf68fdbac6492553b3d8c37c"
+    },
+    {
+      "source": "01KYMKJ80559EZ6FF9F7HPPH7J.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["SAWN-OFF BARRELS"],
+      "note": "未取得ノード。INCREASE TRAJECTORY VARIANCE PER BARREL WITH A SLIGHT VELOCITY BOOST。名前も効果も散弾銃の語彙で、blunderbuss 枝の拡散強化",
+      "sha256": "32cf9aa1f657f887b3bcbf4f92e1707e0f769b365d67d500c728e135466c1875"
+    },
+    {
+      "source": "01KYMKGPPZJ2NX5PR41QF5EFJB.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["REFINED BLAST CHAMBERS"],
+      "note": "未取得ノード（AVAILABLE IN 4 DAYS / REQUIRES ADVANCED MATERIALS LAB）。contracts-04 で初出だが系統が未確定だった名前。blunderbuss ツリーで GARBAGE BLUNDERBUSS / DELUXE TRASH COMPACTOR と同じ行に隣接して現れる",
+      "sha256": "9a3b4ea265e1ccf074d3c6392b1ba3e97e702820c26142948f848d538bb1fe04"
+    },
+    {
+      "source": "01KYMKHDHG804HZ9YE4N8DVDRR.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["INCREASE FIRE RATE"],
+      "note": "+14% FIRE RATE。**説明文が blunderbuss 版**（IMPROVE WASTE PROCESSING AND BARREL RELOADING MECHANISMS…）で、volley 版の『TURRET RELOAD MECHANISMS』とは別ノード。同名で経路ごとに専用ノードがあることの証拠。ツリー上にもう1つ同名ノードがある（原本 01KYMKHNXQ34HSJZ5TFSWXE8CG.png・AVAILABLE IN 2 DAYS）",
+      "sha256": "a8eb03d686ee83864115ae0edc6d67ee4c1c3b19bd6b677e9e7b45deee18912c"
+    },
+    {
+      "source": "01KYMNB3ZBWW2T2ESWKPTTP1BC.png",
+      "rect": [55, 760, 1275, 200],
+      "names": ["ULTIMATE FIRE RATE"],
+      "note": "別 run。未取得ノード。PROCESS WASTE AND RELOAD BARRELS WITH THE ULTIMATE EFFICIENCY / +6% FIRE RATE。volley の EXTREME FIRE RATE に対応する blunderbuss 版の最終段",
+      "sha256": "e75f72384fde05b49fca37b4cceb79c590bc71512d4da3dff6295d2a67e9336a"
+    }
+  ]
+}
