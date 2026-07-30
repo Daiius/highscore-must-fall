@@ -118,6 +118,12 @@ export const UPGRADES: readonly UpgradeSeed[] = [
   { name: 'ADVANCED RICOCHET', evidence: 'contracts-tree-02' },
   { name: 'FULL GRAPHENE COATING', evidence: 'contracts-tree-02' },
   { name: 'SUPERCONDUCTING MAG RAIL', evidence: 'contracts-tree-02' },
+  // contracts-tree-03.png（証拠シート。volley 枝を基本形から順にホバーしたもの）。
+  // 既に verified な6種（VOLLEY / TRIPLE / QUAD / PENT VOLLEY RAILGUN / INCREASE FIRE RATE /
+  // EFFICIENT RELOADING）もシートには載っているが、evidence は初出の画像のままにする。
+  // ここに挙げるのは新規の2種で、どちらも未取得ノード（AVAILABLE IN n DAYS）。
+  { name: 'HEX VOLLEY RAILGUN', evidence: 'contracts-tree-03' },
+  { name: 'EXTREME FIRE RATE', evidence: 'contracts-tree-03' },
   // 実測 run 由来の仮登録（1種）
   { name: 'PIVOT RELOAD', kind: 'opportunity_upgrade', evidence: null },
   // 本番カタログに unverified 自動登録されていた仮登録（4種・スクショ未取得）。
