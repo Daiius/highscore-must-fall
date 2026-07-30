@@ -1,0 +1,66 @@
+{
+  "sheet": "contracts-tree-03",
+  "note": "SIGN CONTRACTS 画面のツリーを volley（VOLLEY RAILGUN）枝に沿ってホバーしたもの。帯はツリー順（基本形 → 連射数の派生 → 発射レートの派生）に並べてある。HEX VOLLEY RAILGUN と EXTREME FIRE RATE は未取得ノードで、AVAILABLE IN n DAYS が読める。",
+  "origin": "2026-07-31 にユーザーが clip の期限付き共有で提供（9枚）。原本は rawDir に保管。同じ名前を複数ノードで撮っている重複はシートに載せていない（INCREASE FIRE RATE ×2）。",
+  "rawDir": ".claude-personal/samples-raw",
+  "posterize": 16,
+  "width": 1259,
+  "strips": [
+    {
+      "source": "01KYSRAHY5PAS2RK4EAMEAPD1K.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["VOLLEY RAILGUN"],
+      "note": "取得済み（✓）＝ volley 枝の基本形。MULTI-BARREL TURRET +1.5% DAMAGE / -120 RPM FIRE RATE / -12% PROJECTILE MASS。説明の『POTENTIAL FOR LARGE BARREL ARRAYS OR EXTREME RATES OF FIRE』が、この枝が連射数と発射レートの2方向に伸びることを示す",
+      "sha256": "23246c66f762fa74a5063573233b3ecb7452d3a5276cb03894ff0b3854503e91"
+    },
+    {
+      "source": "01KYSRASDJ5RBXS108CHKC53A6.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["TRIPLE VOLLEY RAILGUN"],
+      "note": "取得済み（✓）。x3 GUN BARRELS / -150 RPM FIRE RATE / -6% PROJECTILE MASS",
+      "sha256": "b5ad8fe5d057e0cdb18fdb6ff7589399293cef640ddd6a0b63e3238a851398f0"
+    },
+    {
+      "source": "01KYSRBV4B1FN2SW2NYDQMHZ06.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["QUAD VOLLEY RAILGUN"],
+      "note": "FIRE FOUR ROUNDS PER SHOT WITH ADJUSTABLE SPREAD",
+      "sha256": "89dcda602848389caa4348698cc1a710a6c66471fe4e72e722f4afd864a802fb"
+    },
+    {
+      "source": "01KYSRW03D2GCTDG5RYJ4KFTJ1.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["PENT VOLLEY RAILGUN"],
+      "note": "提示中（SIGN CONTRACT の TURRET 欄にも出ている）。+1 GUN BARREL / -75 RPM FIRE RATE / +6% DAMAGE TAPER",
+      "sha256": "786178b5a67eab1ecbdf07589ea0889eb45f2e873b10633f4093971163853f54"
+    },
+    {
+      "source": "01KYSRW6F2FVRSVTS0118CS7DJ.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["HEX VOLLEY RAILGUN"],
+      "note": "未取得ノード（AVAILABLE IN 3 DAYS）。FIRE SIX ROUNDS PER SHOT WITH ADJUSTABLE SPREAD。連射数の派生の最終段",
+      "sha256": "7792d8a73d3f76e2de89dc829c37e9caffc8f14208f83591178bc2b9f714e00e"
+    },
+    {
+      "source": "01KYSRB8HJA89NJZW9D1BD3Z8Q.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["INCREASE FIRE RATE"],
+      "note": "取得済み（✓）。+150 RPM FIRE RATE。ツリー上に同名ノードが2つあり、もう一方は +120 RPM で説明文に『WITH A SLIGHT LOSS OF GIMBAL SPEED』が無い（原本 01KYSRB0XWV8J4TDQVH6YP18V4.png）",
+      "sha256": "5e5a7421647714a0df5cda73d034a8f635c667b0e72982cabee29f7ab7a5d2fe"
+    },
+    {
+      "source": "01KYSRBFG8AHM9QBW0X2QSP32E.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["EFFICIENT RELOADING"],
+      "note": "提示中。+150 RPM FIRE RATE / +2.5% GIMBAL INERTIA",
+      "sha256": "4f627e5b4afe39c0e921739b8db8d0cabccb99a63ef602d538e78cef4daca54f"
+    },
+    {
+      "source": "01KYSRBNFY9SQRTXMREAVQZHAP.png",
+      "rect": [55, 773, 1259, 185],
+      "names": ["EXTREME FIRE RATE"],
+      "note": "未取得ノード。ENGINEER NOVEL TURRET RELOADING MECHANISMS TO ACHIEVE UNPRECEDENTED RATES OF FIRE。発射レートの派生の最終段",
+      "sha256": "48c8b0cba72ca179453598512bef4fe085bb3a5c5cfd36393e4ffe9ea6fcc7be"
+    }
+  ]
+}

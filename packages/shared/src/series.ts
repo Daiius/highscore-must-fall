@@ -106,10 +106,21 @@ export const UPGRADE_BRANCH_BY_NAME: Record<string, UpgradeBranch> = {
   'IMPROVE GIMBAL SPEED': 'railgun_common',
   'INCREASE FIRE RATE': 'railgun_common',
   'EFFICIENT RELOADING': 'railgun_common',
+  // volley 枝。prd/samples/contracts-tree-03.png（ツリーを基本形から順にホバーした証拠シート）で
+  // 連射数の派生が HEX まで揃った。基本形の説明文『FIRE TWIN ROUNDS …, POTENTIAL FOR LARGE
+  // BARREL ARRAYS OR EXTREME RATES OF FIRE』のとおり、この枝は**連射数**と**発射レート**の
+  // 2方向に伸びる。
   'VOLLEY RAILGUN': 'volley',
   'TRIPLE VOLLEY RAILGUN': 'volley',
   'QUAD VOLLEY RAILGUN': 'volley',
   'PENT VOLLEY RAILGUN': 'volley',
+  'HEX VOLLEY RAILGUN': 'volley',
+  // 発射レート方向の到達点（ユーザー確定 2026-07-31）。説明文『ENGINEER NOVEL TURRET RELOADING
+  // MECHANISMS TO ACHIEVE UNPRECEDENTED RATES OF FIRE』だけを見ると INCREASE FIRE RATE /
+  // EFFICIENT RELOADING の直系上位＝ railgun_common にも読めるが、基本形が『OR EXTREME RATES OF
+  // FIRE』と名指ししている方を採った。**他経路の run でこの名前が出たら railgun_common へ移すこと**
+  // （同じ名前が run によって違う分類になってはいけない。上の railgun_common の注記と同じ理由）。
+  'EXTREME FIRE RATE': 'volley',
   // coil 枝。prd/samples/contracts-tree-02.png（ツリーを基本形から順にホバーした証拠シート）で
   // 7ノードが揃った。派生3種はいずれも説明文が COBALT / COBALT COIL の弾を指しており、
   // 前提条件ではなく**説明文**を根拠に coil としている。
