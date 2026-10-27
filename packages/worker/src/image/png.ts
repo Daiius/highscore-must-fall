@@ -2,7 +2,7 @@
 //
 // UPGRADE HISTORY の列分割（./columns.ts）だけのために置く。画像ライブラリを worker の
 // 依存に足さないのは、常駐コンテナへ持ち込む native 依存を増やしたくないため
-// （node:22-slim + tsx 直接実行という Dockerfile の構成を崩さない）。
+// （node:24-slim + tsx 直接実行という Dockerfile の構成を崩さない）。
 //
 // `scripts/evidence-sheet.mjs` にも同種のコーデックがあるが、共有しない:
 //   - worker のイメージには `scripts/` が入らない（Dockerfile は packages/{shared,server,worker} のみ）

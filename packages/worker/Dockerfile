@@ -11,10 +11,10 @@
 # server と同様のバンドルはせず tsx で TS を直接実行する（worker は常駐 1 プロセスで、
 # 起動時間もイメージサイズも支配的でない）。
 
-FROM node:22-slim
+FROM node:24-slim
 
 # ca-certificates: LLM CLI は OS の CA ストアで TLS を検証する（Node は自前の CA バンドルを持つので
-#   polling は通るが、CLI 側だけが UnknownIssuer で落ちる）。node:22-slim には入っていない。
+#   polling は通るが、CLI 側だけが UnknownIssuer で落ちる）。node:24-slim には入っていない。
 # bubblewrap: CLI が自前のサンドボックスでツール実行を隔離する場合に使う。無くても同梱版に
 #   フォールバックするが、毎回警告が出るので OS のものを入れる。
 RUN apt-get update \

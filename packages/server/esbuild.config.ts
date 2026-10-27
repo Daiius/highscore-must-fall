@@ -11,7 +11,7 @@ await build({
   outfile: './dist/server.js',
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  target: 'node24',
   format: 'esm',
   minify: true,
   sourcemap: false,

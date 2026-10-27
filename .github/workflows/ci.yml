@@ -19,12 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # packageManager フィールド（pnpm@10.x）を尊重して pnpm を用意。
+      # packageManager フィールド（pnpm@12.x）を尊重して pnpm を用意。
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       # lockfile を固定して再現性を担保（catalog の版ズレを検出）。

@@ -13,7 +13,7 @@
 // server 側のバンドル（packages/server/esbuild.config.ts）とは別物で、同じ設定を共有しない。
 // **どちらも `pnpm -r build`（ルートの build）で回る**ので、検証チェーンの変更は要らない。
 //
-// 出力の拡張子は `.js` のまま。runtime イメージ（node:22-slim）は `{"type":"module"}` の
+// 出力の拡張子は `.js` のまま。runtime イメージ（node:24-slim）は `{"type":"module"}` の
 // package.json を持つため、ESM と認識される（distroless で package.json を置けない clip とは
 // 事情が違うので、`.mjs` にする必要はない）。
 
@@ -26,7 +26,7 @@ await build({
   outdir: './dist',
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  target: 'node24',
   format: 'esm',
   minify: true,
   sourcemap: false,
