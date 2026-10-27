@@ -37,11 +37,15 @@ RUN pnpm --filter server build   # → packages/server/dist/server.js（sharp �
 # 構造的に一致すること（外部から流す方式は、両者がずれても何も警告されない）。
 RUN pnpm --filter database build
 
-# sharp（バンドルできないネイティブ依存）を frozen lockfile から解決した実体として取り出す。
-# deploy は既存の store（上の frozen install 由来）からコピーするだけで、レジストリ解決を伴わない
+# sharp（バンドルできないネイティブ依存）を、上の frozen install が置いた実体から取り出す
 # ＝ commit 済み pnpm-lock.yaml と minimumReleaseAge を尊重する（prd/02 §6）。
-# --node-linker=hoisted で node_modules を平坦化し、sharp のクロージャを実ディレクトリで取り出す。
-RUN pnpm --filter server --node-linker=hoisted deploy --prod --legacy /deploy
+# pnpm の仮想ストアでは、パッケージの依存は `.pnpm/<pkg>/node_modules/` に兄弟として並ぶので、
+# そこを実体化（-L）してコピーすれば sharp のクロージャになる。peer の違いで sharp の実体が
+# 複数できたときは、どれを取るか決められないので止める。
+RUN set -eu; \
+    set -- node_modules/.pnpm/sharp@*/node_modules; \
+    if [ "$#" -ne 1 ]; then echo "sharp の実体が 1 つではない: $*" >&2; exit 1; fi; \
+    mkdir -p /deploy && cp -rL "$1" /deploy/node_modules
 
 # ---- runtime: バンドル + sharp のクロージャのみ ----------------------------------------
 FROM node:24-slim AS runtime
