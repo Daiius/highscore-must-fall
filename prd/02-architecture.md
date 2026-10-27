@@ -49,6 +49,7 @@ packages/
   server/     # Hono(RPC) API・better-auth・ingestion アダプタ層・(将来)MCP
   web/        # Vite + React + TanStack Router + Tailwind の UI
   worker/     # スクショ自動解析のジョブ処理（compose 外・分離実行環境で稼働。prd/04 §9）
+  deploy-static/  # web の静的ビルドを配信ディレクトリへ置くデプロイツール（他パッケージに依存しない。§9.2）
 ```
 
 ### 依存方向（循環させない）
@@ -206,3 +207,31 @@ interface BlobStore {
 - エントリは **`database` パッケージに置く**（`migrate.ts` はパッケージルート直下。`migrationsFolder` を
   ファイル相対で解くため、`src/` に置くと dev とバンドル後で `./drizzle` の位置がずれる）。
   バンドルは `packages/database/esbuild.config.ts`、runtime への配置は `packages/server/Dockerfile.prod`。
+
+### 9.2 web の静的配信は世代を管理して置く（`pnpm deploy:web`）
+
+web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `assets/`）を配信ディレクトリへ置く。
+本体は `packages/deploy-static`（seseraki の同名パッケージを移植したもの）。接続先は `.env.deploy`
+（雛形 `.env.deploy.example`）。**既定は dry-run（計画の表示のみ）で、`--apply` を付けたときだけ書き込む。**
+
+- **`assets/` には「今回」と「1 つ前」のデプロイのファイルだけを残す。** 上書きだけだと古いチャンクが
+  溜まり続け、全部消すとデプロイ前から開いていたタブが旧チャンクを取りに来て 404 になる。
+  1 つ前まで残せば、開きっぱなしのタブも次の画面遷移までは動く。
+- 世代の一覧（`current.txt` / `prev.txt`）は**配信外**のディレクトリに置く。初回（一覧が無い）は何も消さない
+  ——前からあったファイルが何者か分からないため。同じビルドの再デプロイでは世代を進めない。
+  - 2 回目以降の削除は「今回 ∪ 1 つ前」に無いもの**すべて**が対象で、一覧に載っていないかは問わない。
+    一覧を持たない方式（上書きの scp 等）で溜まった古いファイルも、移行後 2 回目のデプロイ
+    （ビルドが変わったとき）で消える。手で掃除する必要はない。
+- 順序は `pending.txt`（公開しかけた世代）の記録 → `assets/` → `index.html` などトップレベル →
+  一覧の更新（`pending.txt` を消す）→ 削除。新しい `index.html` が未着のチャンクを指す瞬間を作らないためで、
+  途中で失敗・中断したら以降は行わない。
+- `index.html` の公開後に一覧の更新だけが失敗すると、公開済みの世代が一覧に載らない。次回は残った
+  `pending.txt` の世代も「1 つ前」に含めて残す。`pending.txt` は上書きせず既存分に今回を足していき、
+  一覧の更新に成功したときだけ消す（再試行も失敗したときに、先に公開された世代の記録を失わないため）。
+- 接続と転送はシステムの `ssh` / `rsync` を呼ぶ（`~/.ssh/config`・鍵・known_hosts の検証をそのまま効かせる）。
+  ControlMaster で接続を 1 本にまとめ、パスフレーズの入力を 1 回で済ませる。
+- **`rsync` はローカルだけでなくリモート側にも必要**（リモートに無いと `pending.txt` の記録後、
+  最初の rsync 転送が `rsync: command not found` で失敗し、`pending.txt` は残る）。
+  リモートのシェルは POSIX sh を前提にする。
+- 判断（何を残し何を消すか）は純粋な関数（`plan.ts`）、実行は差し替えられる runner に分けてある。
+  テストは本物の ssh を呼ばず、rsync があればローカルの一時ディレクトリで手順を通しで回す。
