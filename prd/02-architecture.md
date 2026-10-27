@@ -147,7 +147,7 @@ shared  ← database ← server ← (worker)
   各 `package.json` は `"x": "catalog:"` で参照する。版ズレ事故を防ぐ。
 - **`minimumReleaseAge: 4320`（3日）**: 公開直後の悪意あるリリースを踏みにくくするサプライチェーン対策。
   - 例外: 「最新を即追従したい」依存（**Drizzle 1.0 RC** 等）は catalog で **exact pin** して実質回避する。
-- **`onlyBuiltDependencies`**: postinstall ビルドを許可する依存（`esbuild`, `@tailwindcss/oxide` 等）だけ明示。
+- **`allowBuilds`**: postinstall ビルドを許可する依存（`esbuild`, `@tailwindcss/oxide` 等）だけ明示（pnpm 11 で `onlyBuiltDependencies` から改名）。
 
 ## 7. ストレージ抽象（`BlobStore`）
 

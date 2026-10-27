@@ -56,8 +56,8 @@ catalog:
 # 最新を即追従したい依存（Drizzle RC 等）は catalog で exact pin して例外化する。
 minimumReleaseAge: 4320
 
-# postinstall ビルドを許可する依存（明示したものだけ走らせる）
-onlyBuiltDependencies:
-  - esbuild
-  - "@tailwindcss/oxide"
-  - sharp
+# postinstall ビルドを許可する依存（明示したものだけ走らせる。pnpm 11+ の allowBuilds）
+allowBuilds:
+  esbuild: true
+  "@tailwindcss/oxide": true
+  sharp: true
