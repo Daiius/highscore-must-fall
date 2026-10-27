@@ -18,9 +18,7 @@ catalog:
   hono: ^4.13.13
   "@hono/node-server": ^2.1.5
   "@hono/zod-validator": ^0.8.0
-  # 1.7 は Account.issuer の追加と既存行の backfill が要る（semver はマイナーだがスキーマ移行を伴う）。
-  # 移行を済ませるまで 1.6 系に留める。
-  better-auth: ~1.6.22
+  better-auth: ^1.7.12
   # 画像のサニタイズ（EXIF 除去・実フォーマット検証・寸法取得。prd/04 §7）。
   sharp: ^0.35.5
   # BlobStore の S3 互換アダプタ（本番 R2 / 開発 SeaweedFS。prd/02 §7）。
