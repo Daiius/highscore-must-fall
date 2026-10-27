@@ -24,4 +24,6 @@ export const ingestRoute = new Hono<AppEnv>()
     return c.json(ingestSubmission(text, format))
   })
   // JSON Schema は配布物（未ログインでも取得できてよい）。
-  .get('/json-schema', (c) => c.json(runRecordJsonSchema()))
+  // RPC の型には載せない（web はリンクで配るだけ）。c.json だと zod 内部の JSONSchema 型が
+  // AppType に入り、zod 4.6 以降は web 側の推論が TS2742（型に名前が付けられない）になる。
+  .get('/json-schema', () => Response.json(runRecordJsonSchema()))
