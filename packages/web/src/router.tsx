@@ -1,16 +1,24 @@
 // ルート定義（コードベース）。root レイアウトの下に home/import/runs/detail/analysis を置く。
 // 認証ガードは各ページが useAuth で行う（未ログインは Home のログイン導線へ促す）。
 
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+} from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { RootLayout } from './components/RootLayout'
 import { RequireAuth } from './lib/auth'
-import { Analysis } from './pages/Analysis'
-import { Catalog } from './pages/Catalog'
 import { Home } from './pages/Home'
-import { Import } from './pages/Import'
-import { RunDetail } from './pages/RunDetail'
-import { Runs } from './pages/Runs'
+
+// 入口の Home 以外はルート単位で分割し、開いたときに読む（分析画面の recharts などを初回の
+// 読み込みから外す）。チャンクが増えても、配信先は deploy-static が 2 世代分に保つ（prd/02 §9.2）。
+const Import = lazyRouteComponent(() => import('./pages/Import'), 'Import')
+const Runs = lazyRouteComponent(() => import('./pages/Runs'), 'Runs')
+const RunDetail = lazyRouteComponent(() => import('./pages/RunDetail'), 'RunDetail')
+const Analysis = lazyRouteComponent(() => import('./pages/Analysis'), 'Analysis')
+const Catalog = lazyRouteComponent(() => import('./pages/Catalog'), 'Catalog')
 
 /** 認証必須ページを RequireAuth で包む。 */
 const guarded = (node: ReactNode) => () => <RequireAuth>{node}</RequireAuth>
