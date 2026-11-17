@@ -235,3 +235,17 @@ web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `as
   リモートのシェルは POSIX sh を前提にする。
 - 判断（何を残し何を消すか）は純粋な関数（`plan.ts`）、実行は差し替えられる runner に分けてある。
   テストは本物の ssh を呼ばず、rsync があればローカルの一時ディレクトリで手順を通しで回す。
+
+### 9.3 版の確かめ方（`GET /api/version`）
+
+本番の server がどのコミットから作られたかを、外から確かめられるようにする（デプロイの確認に使う）。
+
+- **`GET /api/version`**（認証なし・DB に触れない）が `{ "commit", "builtAt", "dirty" }` を返す。
+  `commit` は 40 桁の SHA、`builtAt` は ISO 8601 の UTC、`dirty` は追跡しているファイルに未コミットの変更が
+  ある状態でビルドしたか。**分からない値は文字列 `unknown`**（`dirty` は `false`）にし、ビルドも起動も止めない。
+- 値は**イメージのビルド引数**（`GIT_COMMIT` / `BUILD_TIME` / `GIT_DIRTY`）を `Dockerfile.prod` の最終ステージで
+  `ENV` に入れたもの（`.dockerignore` が `.git` を除くので、イメージの中では git から取れない）。
+  dev（`Dockerfile.dev` と compose）は渡さないので `unknown`。
+- **`build-push-server.yml` が渡す**（コミットは `github.sha`・日時は UTC・`dirty` は `false`）。イメージには
+  `sha-<40 桁の SHA>` のタグが付く。手元でビルドするときは `--build-arg` を自分で付ける（付けなければ `unknown`）。
+- 対象は server だけ。web（静的配信）の版は未対応。
