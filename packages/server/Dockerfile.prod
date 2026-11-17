@@ -80,5 +80,17 @@ COPY --from=build /workspace/packages/database/dist/seed.js    ./seed.js
 # ⚠ ここを忘れると、マイグレーションを流すまで気づけない。
 COPY --from=build /workspace/packages/database/drizzle ./drizzle
 
+# ビルドの版（prd/02 §9.3）。`GET /api/version` が返す。`.dockerignore` が `.git` を除くので
+# イメージの中では git から取れない——ビルド引数で渡す。未指定なら unknown（ビルドは止めない）。
+#   --build-arg GIT_COMMIT=$(git rev-parse HEAD)
+#   --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+#   --build-arg GIT_DIRTY=$(test -z "$(git status --porcelain --untracked-files=no)" && echo false || echo true)
+# 最終ステージの末尾に置く（値が毎回変わるので、手前の層のキャッシュを壊さないように）。
+# 渡し忘れは src/lib/__tests__/build-version.test.ts が照合する。
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ARG GIT_DIRTY=false
+ENV GIT_COMMIT=$GIT_COMMIT BUILD_TIME=$BUILD_TIME GIT_DIRTY=$GIT_DIRTY
+
 EXPOSE 4000
 CMD ["node", "server.js"]

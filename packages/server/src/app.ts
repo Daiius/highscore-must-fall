@@ -6,6 +6,7 @@
 //   - dev ログインバイパス /api/dev/login（本番では未登録）。
 //   - ingestion（検証・分析キット配布）と run 保存を route モジュールとして mount。
 //   - 動作確認用の /api/health / /api/me。
+//   - ビルドの版 /api/version（認証なし・DB に触れない。prd/02 §9.3）。
 //
 // 後続 PR で run 一覧/詳細・catalog・画像配信のルートをこの route チェーンに足していく。
 
@@ -14,6 +15,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth, isDevLoginEnabled, webOrigin } from './lib/auth'
+import { buildVersionFromEnv } from './lib/build-version'
 import type { AppEnv } from './lib/context'
 import { analysisRoute } from './routes/analysis'
 import { catalogRoute } from './routes/catalog'
@@ -36,8 +38,9 @@ app.use(
 
 // セッションをコンテキストに載せる。/api/auth/* 自身は better-auth が cookie を処理するので
 // ここでの取得は不要（二重取得を避ける）。
+// /api/version は誰にでも同じ値を返すので取得しない（cookie が付いていても DB に触れない。prd/02 §9.3）。
 app.use('*', async (c, next) => {
-  if (c.req.path.startsWith('/api/auth/')) {
+  if (c.req.path.startsWith('/api/auth/') || c.req.path === '/api/version') {
     return next()
   }
   const s = await auth.api.getSession({ headers: c.req.raw.headers })
@@ -73,8 +76,13 @@ if (isDevLoginEnabled) {
   })
 }
 
+/** この server のビルドの版（prd/02 §9.3）。イメージの ENV は起動後に変わらないので、読み込み時に 1 回だけ読む。 */
+const buildVersion = buildVersionFromEnv(process.env)
+
 const route = app
   .get('/api/health', (c) => c.json({ ok: true }))
+  // 本番の server がどのコミットから作られたかを外から確かめる口。認証は要らない（SHA とビルド日時だけ）。
+  .get('/api/version', (c) => c.json(buildVersion))
   .get('/api/me', (c) => c.json({ user: c.get('user') }))
   .route('/api/ingest', ingestRoute)
   .route('/api/runs', runsRoute)
