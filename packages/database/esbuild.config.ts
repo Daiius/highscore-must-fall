@@ -13,9 +13,9 @@
 // server 側のバンドル（packages/server/esbuild.config.ts）とは別物で、同じ設定を共有しない。
 // **どちらも `pnpm -r build`（ルートの build）で回る**ので、検証チェーンの変更は要らない。
 //
-// 出力の拡張子は `.js` のまま。runtime イメージ（node:24-slim）は `{"type":"module"}` の
-// package.json を持つため、ESM と認識される（distroless で package.json を置けない clip とは
-// 事情が違うので、`.mjs` にする必要はない）。
+// 出力の拡張子は `.js` のまま。runtime イメージ（distroless）は `{"type":"module"}` の
+// package.json を持つため、ESM と認識される（build ステージで作って COPY する。
+// packages/server/Dockerfile.prod）。
 
 import { build } from 'esbuild'
 

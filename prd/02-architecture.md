@@ -207,6 +207,11 @@ interface BlobStore {
 - エントリは **`database` パッケージに置く**（`migrate.ts` はパッケージルート直下。`migrationsFolder` を
   ファイル相対で解くため、`src/` に置くと dev とバンドル後で `./drizzle` の位置がずれる）。
   バンドルは `packages/database/esbuild.config.ts`、runtime への配置は `packages/server/Dockerfile.prod`。
+- **実行イメージは distroless（Debian 13・Node 24）。** npm もシェルも持たない（`compose exec <service> sh` は使えない）。
+  起動の仕方は「ENTRYPOINT を持たず、command を `node` から書く」形（server は CMD の `node server.js`、
+  migrate / seed は `command: ["node", "/app/migrate.js"]` / `["node", "/app/seed.js"]`）。
+  distroless の既定（ENTRYPOINT が node）に戻すと本番の compose の書き方が変わるので、Dockerfile で
+  ENTRYPOINT を空にして `node` を PATH に置いている（テストが照合する）。
 
 ### 9.2 web の静的配信は世代を管理して置く（`pnpm deploy:web`）
 

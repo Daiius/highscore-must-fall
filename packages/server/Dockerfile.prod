@@ -3,9 +3,13 @@
 # 単一 ESM ファイルにバンドルして実行する。参考: ~/sources/seseraki, girls-side-analysis。
 # sharp だけはネイティブのためバンドル不可 → external にし、runtime で実体を導入する。
 # 対象アーキ: linux/amd64（GitHub Actions でビルド。sharp のプリビルドバイナリもこの arch）。
+#
+# 実行イメージは distroless（Node と最小限の OS のパッケージだけ。npm もシェルも持たない）。
+# ほかの server と同じく Debian 13（trixie）・Node 24 に揃える。
+# ⚠ `node:24-slim` は Debian 12（bookworm）を指すので、build は `-trixie-slim` と系統を名指しする。
 
 # ---- build: 依存解決 + esbuild バンドル -------------------------------------------------
-FROM node:24-slim AS build
+FROM node:24-trixie-slim AS build
 WORKDIR /workspace
 RUN corepack enable
 
@@ -47,14 +51,25 @@ RUN set -eu; \
     if [ "$#" -ne 1 ]; then echo "sharp の実体が 1 つではない: $*" >&2; exit 1; fi; \
     mkdir -p /deploy && cp -rL "$1" /deploy/node_modules
 
+# server.js / migrate.js / seed.js は ESM（.js）。Node に ESM と認識させるため type=module を置く。
+# runtime（distroless）にはシェルが無く RUN が打てないので、ここで作って COPY する。
+RUN printf '{"private":true,"type":"module"}\n' > /deploy/package.json
+
 # ---- runtime: バンドル + sharp のクロージャのみ ----------------------------------------
-FROM node:24-slim AS runtime
+# distroless の root 版（`:latest`）。node:24-slim と同じく root で動かす（実行ユーザーは変えない）。
+FROM gcr.io/distroless/nodejs24-debian13:latest AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# server.js は ESM（.js）。Node に ESM と認識させるため type=module を置く。
-RUN printf '{"private":true,"type":"module"}\n' > package.json
+# 🔒 **起動の仕方を node:24-slim のときと同じに保つ**（ENTRYPOINT を持たず、command は `node` から書く）。
+# distroless の既定は ENTRYPOINT=/nodejs/bin/node で、そのままだと compose の
+# `command: ["node", "/app/migrate.js"]` が `node node /app/migrate.js` になって落ちる。
+# 本番の compose を書き換えずに済むよう、ENTRYPOINT を空にし、`node` を PATH で引けるようにする。
+# （distroless の PATH には /nodejs/bin が無い。）src/lib/__tests__/dockerfile-runtime.test.ts が照合する。
+ENV PATH=/nodejs/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENTRYPOINT []
 
+COPY --from=build /deploy/package.json ./package.json
 COPY --from=build /workspace/packages/server/dist/server.js ./server.js
 
 # sharp の実行時クロージャ（lockfile 固定の実体）を build stage からコピーする。
@@ -71,8 +86,9 @@ COPY --from=build /deploy/node_modules/semver      ./node_modules/semver
 #   docker compose run --rm <migrate service>   # command: ["node", "/app/migrate.js"]
 #   docker compose run --rm <seed service>      # command: ["node", "/app/seed.js"]
 #
-# ⚠ ENTRYPOINT を持たない（CMD が `node server.js`）ので、compose の command は
-#   **`node` から書く**。パスだけ渡す形は distroless（ENTRYPOINT=node）でしか成立しない。
+# ⚠ ENTRYPOINT を持たない（CMD が `node server.js`。上の ENTRYPOINT [] を参照）ので、
+#   compose の command は **`node` から書く**。パスだけ渡す形（`["/app/migrate.js"]`）は通らない。
+# ⚠ distroless には**シェルが無い**。`docker compose exec <service> sh` は使えない。
 COPY --from=build /workspace/packages/database/dist/migrate.js ./migrate.js
 COPY --from=build /workspace/packages/database/dist/seed.js    ./seed.js
 
