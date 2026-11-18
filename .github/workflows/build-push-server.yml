@@ -16,7 +16,10 @@ on:
     # 入れていないもの（COPY はされるが、server の実行物を変えない）:
     #   packages/web/package.json・packages/worker/package.json（依存を変えれば pnpm-lock.yaml が変わる）、
     #   .githooks/（install の prepare フックが開けるためだけ）、.dockerignore（COPY は明示のパスだけ）。
+    # ⚠ 下の印の間は「latest を付けるか」の step もこのファイルから読む（一覧はここ 1 か所だけ）。
+    #   形は「- <パス>」を 1 行ずつ。印を消したり、ほかの形の行を挟むと、その step は latest を付けずに止まる。
     paths:
+      # >>> server-paths
       - packages/server/**
       - packages/shared/**
       - packages/database/**
@@ -25,6 +28,7 @@ on:
       - package.json
       - tsconfig.base.json
       - .github/workflows/build-push-server.yml
+      # <<< server-paths
   workflow_dispatch:
 
 # 同じ ref のビルドは直列にする（古いコミットのビルドが、あとから `latest` を上書きしないように）。
@@ -43,7 +47,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 「latest を付けるか」の判定に main の履歴が要る（祖先の判定と差分）。浅い取得にしない。
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
 
@@ -54,27 +61,82 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `latest` は「既定の枝（main）の、いま最新のコミット」のビルドにだけ付ける。
-      # 古い回の再実行（Re-run）や、直列待ちの間に main が進んだ回が、`latest` を古い版へ戻さないように、
-      # push の直前にリモートの main の先頭と照らす。違えば `latest` を付けない（sha / 枝のタグは付ける）。
+      # `latest`（本番が追いかけるタグ）を付けるのは、次の全部を満たすときだけ:
+      #   1. 既定の枝（main）の回である（手動起動でほかの枝を選んだ回には付けない）
+      #   2. このコミットが、いまのリモートの main の先頭か、その祖先である（main に無いコミットには付けない）
+      #   3. このコミットから main の先頭までの間に、上の paths（ビルド対象）に効く変更が無い
+      #      ＝このイメージは main の最新と同じ中身。効く変更があれば、そのコミットで別の回が走って付ける。
+      #      （先頭だけを見ると、server の変更 A のあとに文書だけの B が入ったとき、A に付かず、B ではビルドが
+      #        起動しないので、A が本番に出ないまま残る。古い回の再実行は 3 で弾かれ、latest は戻らない）
+      # 判定できないとき（履歴が浅い・main を取れない・paths の一覧を読めない）は、安全側で付けない。
+      # 結果と理由は実行の Summary に 1 行出す。
+      # paths の照合は git の pathspec（:(glob)）で行う。`*` は `/` を越えず、末尾の `/**` は配下すべてで、
+      # 今の一覧の書き方では GitHub の paths フィルタと同じ範囲になる（`?`・`+`・`!` などは使わないこと）。
       - name: Decide whether to move latest
         id: latest
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WORKFLOW_FILE: .github/workflows/build-push-server.yml
         run: |
-          set -eu
-          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
-            echo "既定の枝ではない（$GITHUB_REF）ので latest は付けない"
-            echo "enable=false" >> "$GITHUB_OUTPUT"
+          # Actions の bash は -e -o pipefail で動く。失敗を判定に使うコマンドは if / || で受ける。
+          set -u
+          decide() {
+            echo "enable=$1" >> "$GITHUB_OUTPUT"
+            if [ "$1" = true ]; then verb="latest を付ける"; else verb="latest を付けない"; fi
+            echo "${verb}: $2（${GITHUB_SHA}）" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
+          }
+
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            decide false "既定の枝（$DEFAULT_BRANCH）の回ではない（$GITHUB_REF）"
           fi
-          head=$(git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut -f1)
+
+          # paths の一覧を、このコミットの workflow の印の間から読む。
+          if [ "$(grep -c '^ *# >>> server-paths$' "$WORKFLOW_FILE")" != 1 ] ||
+             [ "$(grep -c '^ *# <<< server-paths$' "$WORKFLOW_FILE")" != 1 ]; then
+            decide false "paths の一覧の印（server-paths）が見つからない"
+          fi
+          specs=()
+          while IFS= read -r line; do
+            t="${line#"${line%%[![:space:]]*}"}"
+            case "$t" in
+              ''|'#'*) ;;
+              '- '*) specs+=(":(glob)${t#- }") ;;
+              *) decide false "paths の一覧に読めない行がある: $t" ;;
+            esac
+          done < <(sed -n '/^ *# >>> server-paths$/,/^ *# <<< server-paths$/p' "$WORKFLOW_FILE")
+          if [ "${#specs[@]}" -eq 0 ]; then
+            decide false "paths の一覧が空"
+          fi
+
+          if ! git fetch --quiet --no-tags origin "refs/heads/$DEFAULT_BRANCH"; then
+            decide false "リモートの $DEFAULT_BRANCH を取得できない"
+          fi
+          if [ "$(git rev-parse --is-shallow-repository)" != false ]; then
+            decide false "履歴が浅く、祖先と差分を判定できない"
+          fi
+          if ! head=$(git rev-parse --verify --quiet 'FETCH_HEAD^{commit}'); then
+            decide false "リモートの $DEFAULT_BRANCH の先頭を読めない"
+          fi
+
           if [ "$head" = "$GITHUB_SHA" ]; then
-            echo "enable=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::$DEFAULT_BRANCH の先頭（$head）がこの回（$GITHUB_SHA）より進んでいるので latest は付けない"
-            echo "enable=false" >> "$GITHUB_OUTPUT"
+            decide true "$DEFAULT_BRANCH の先頭"
           fi
+          rc=0
+          git merge-base --is-ancestor "$GITHUB_SHA" "$head" || rc=$?
+          case $rc in
+            0) ;;
+            1) decide false "$DEFAULT_BRANCH の先頭（$head）の祖先ではない" ;;
+            *) decide false "$DEFAULT_BRANCH の先頭（$head）との祖先の判定に失敗した" ;;
+          esac
+          if ! changed=$(git diff --name-only "$GITHUB_SHA" "$head" -- "${specs[@]}"); then
+            decide false "$DEFAULT_BRANCH の先頭（$head）との差分を取れない"
+          fi
+          if [ -n "$changed" ]; then
+            n=$(printf '%s\n' "$changed" | wc -l)
+            decide false "あとのコミットにビルド対象の変更がある（${n} 件。例: $(printf '%s\n' "$changed" | head -n 1)。その回が付ける）"
+          fi
+          decide true "$DEFAULT_BRANCH は先（$head）へ進んだが、間にビルド対象の変更が無い"
 
       - name: Extract metadata
         id: meta
@@ -85,7 +147,7 @@ jobs:
           # 付与するタグ:
           #   - ブランチ名（/ は - に置換）例: :main
           #   - sha-<40桁フル SHA>            固定参照用
-          #   - :latest                       既定の枝の最新コミットのときだけ（上の step）。本番が追いかけるタグ
+          #   - :latest                       上の step が付けると決めたときだけ。本番が追いかけるタグ
           tags: |
             type=ref,event=branch
             type=sha,format=long
