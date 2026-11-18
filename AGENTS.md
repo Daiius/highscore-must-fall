@@ -3,6 +3,24 @@
 > このファイルがリポジトリの**正典**です（使用する各コーディングエージェント共通）。簡潔・リンク中心に保つこと。
 > 詳細仕様は [`prd/`](./prd/)、コーディング規約は [`.claude/rules/`](./.claude/rules/) を参照。
 
+## ⚠ main に入ると server は数分で本番に出る（マージの前に必ず読む）
+
+- **server は、main にマージされると数分で本番に出る。** main への push で server のイメージがビルドされ
+  （[`build-push-server.yml`](./.github/workflows/build-push-server.yml)。`paths` に当たる変更のとき）、
+  本番の VPS がレジストリの `latest` を数分おきに見て、変わっていれば自動で入れ替える。
+  **「マージしても本番には出ない」と考えない。** 出したくない変更は main に入れない。
+- 対象は server だけ。**web（静的配信）と worker は対象外**で、今までどおり所有者が手で出す。
+- 🔒 **次の PR は、マージの前に所有者と段取りを決める。エージェントは勝手にマージしない。**
+  - マイグレーション（`packages/database` のスキーマや `drizzle/` の変更）を伴う
+  - 環境変数の追加・変更を伴う（本番の env は所有者が置く）
+  - デプロイの前後に手作業（データの後処理・seed の再投入など）が要る
+- マイグレーションは**古い server でも動く形（足すだけ）**にし、**先に本番へ流してからマージする**。
+  マージすると新しい server が先に出るため、順序が逆だと新しい server が古いスキーマの上で動く。
+  切り戻したときも、戻した server が新しいスキーマの上で動けるようにしておく。
+- 本番の版は `GET /api/version` の `commit` で確かめる（[prd/02](./prd/02-architecture.md) §9.3）。
+  **おかしいときの戻し方（VPS での切り戻し）は所有者の作業。エージェントは VPS に触らない。**
+- 詳細は [prd/02](./prd/02-architecture.md) §9.4。デプロイの仕組みの設計は、所有者の非公開のリポジトリにある。
+
 ## プロジェクト目的
 
 **Utopia Must Fall**（ウェーブ防衛系ローグライト・アーケード）のプレイ結果を記録し、
@@ -15,7 +33,7 @@
 |---|---|
 | [prd/README.md](./prd/README.md) | 目的 / スコープ(MVP vs Phase2) / アーキ概観 / 索引 |
 | [prd/01-game-domain.md](./prd/01-game-domain.md) | ゲームのドメイン事実（週 / contract=アップグレード / リロール / apocalypse_bonus / サンプル / 初期カタログ） |
-| [prd/02-architecture.md](./prd/02-architecture.md) | 技術スタック / monorepo / 開発環境 / 依存ポリシー / デプロイ姿勢 |
+| [prd/02-architecture.md](./prd/02-architecture.md) | 技術スタック / monorepo / 開発環境 / 依存ポリシー / デプロイ姿勢（server は main で自動。§9.4） |
 | [prd/03-data-model.md](./prd/03-data-model.md) | 正規スキーマ / DB テーブル / インデックス / 整合チェック |
 | [prd/04-ingestion.md](./prd/04-ingestion.md) | 複数投入ルート / アダプタ層 / レビュー&検証 / 分析キット配布 |
 | [prd/05-auth-and-privacy.md](./prd/05-auth-and-privacy.md) | better-auth / OAuth / プライバシー |

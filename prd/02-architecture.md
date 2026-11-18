@@ -249,3 +249,25 @@ web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `as
 - **`build-push-server.yml` が渡す**（コミットは `github.sha`・日時は UTC・`dirty` は `false`）。イメージには
   `sha-<40 桁の SHA>` のタグが付く。手元でビルドするときは `--build-arg` を自分で付ける（付けなければ `unknown`）。
 - 対象は server だけ。web（静的配信）の版は未対応。
+
+### 9.4 server は main に入ると本番に出る（タグの追従）
+
+**main にマージされた server の変更は、数分で本番に出る**（2026-11-18 から）。
+
+- 流れ: main への push → [`build-push-server.yml`](../.github/workflows/build-push-server.yml) が
+  イメージをビルドして `latest` と `sha-<40 桁>` を付ける → 本番の VPS がレジストリの `latest` を数分おきに見て、
+  変わっていれば入れ替える → VPS の側で疎通と版（`/api/version` の `commit` がイメージの `GIT_COMMIT` と一致するか）を
+  確かめ、駄目なら前のイメージに自動で戻す。動いているが挙動がおかしいときは、所有者が VPS で手で戻す（エージェントは VPS に触らない）。
+  デプロイの仕組みの設計は、所有者の非公開のリポジトリにある。
+- ビルドが走るのは、`Dockerfile.prod` が読むものに触れた push だけ（workflow の `paths`。
+  `packages/{server,shared,database}/**`・根の `pnpm-workspace.yaml` / `package.json` / `pnpm-lock.yaml` /
+  `tsconfig.base.json`・workflow 自身）。文書や web・worker だけの変更では本番は入れ替わらない。
+- `latest` は**既定の枝（main）の、いま最新のコミット**のビルドにだけ付ける。手動起動でほかの枝を選んだ回、
+  古い回の再実行には付けない。同じ ref のビルドは直列に走る（`concurrency`）。
+- 🔒 **順序を守るのは、マージする人とエージェント。** 仕組みの側にマイグレーションで止める関所は無い。
+  - マイグレーション・環境変数の追加・手作業の後処理を伴う PR は、マージの前に所有者と段取りを決める。エージェントは勝手にマージしない。
+  - マイグレーションは**古い server でも動く形（足すだけ）**にし、**先に本番へ流してからマージする**（§9.1。
+    同梱の `migrate.js` で流すには、そのマイグレーションを含むイメージが先に要る。PR の枝で workflow を手動起動すれば、
+    `latest` を動かさずに `sha-<40 桁>` のイメージができる。どう流すかは所有者と決める）。
+    ⚠ ロールバックで server を戻しても、スキーマは戻らない（§9.1）。戻した server が新しいスキーマで動けることが前提になる。
+- web（静的配信。§9.2）と worker は対象外。今までどおり手で出す。

@@ -30,4 +30,6 @@
     - **手順**: `catalog-data.ts` の `evidence` を見る。**`evidence` のある名前への指摘は却下してよい**（返信コメントに `prd/samples/<evidence>.png` のパスと、画像のどこ（週・行）かを書く）。evidence の実在はテストが強制しているので、主張は検証可能な既定事実である。**`evidence: null`（仮登録）の名前への指摘は正当な可能性がある**が、bot の読みを鵜呑みにして seed を書き換えず、疑義台帳に記録してスクショで決着させる。
     - 指摘が繰り返されるなら説得を続けず、ユーザー判断で override マージ。→ 正典は [`prd/08-catalog-lifecycle.md`](../../prd/08-catalog-lifecycle.md) §8。
 - **マージはユーザーから依頼された時のみ行う**（コミット/プッシュと同じ扱い）。レビューが通ったからといって自動でマージしない。
+  - ⚠ **server は main に入ると数分で本番に出る**（[`AGENTS.md`](../../AGENTS.md) 冒頭・[`prd/02`](../../prd/02-architecture.md) §9.4）。
+    マイグレーション・環境変数の追加・手作業の後処理を伴う PR は、マージの前に所有者と段取りを決める。
 - Co-Author / PR バイラインは `settings.json` の `attribution` で抑制済み（本文へ署名を書かない）。
