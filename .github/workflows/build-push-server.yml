@@ -1,15 +1,39 @@
 name: Build and push server image to GHCR
 
-# macOS の開発マシンから、本番（linux/amd64）向け server イメージを CI でビルドして
-# GHCR へ push する。手動起動（workflow_dispatch）。参考: seseraki / girls-side-analysis。
-# web は Docker 化せず、Vite ビルド出力を本番 nginx へ配置する運用のため対象外。
+# 本番（linux/amd64）向けの server イメージを CI でビルドして GHCR へ push する。参考: seseraki / girls-side-analysis。
+# main への push（下の paths に当たるとき）と、手動起動（workflow_dispatch）で走る。
+# ⚠ 本番の VPS は `latest` を数分おきに見て、変わっていれば自動で入れ替える（タグの追従）。
+#   つまり **main に入った server の変更は、このビルドを経て数分で本番に出る**（AGENTS.md「main に入ると本番に出る」）。
+# web は Docker 化せず、Vite ビルド出力を本番 nginx へ配置する運用のため対象外。worker も対象外。
 
 on:
+  push:
+    branches: [main]
+    # Dockerfile.prod が読むものだけ（漏れると server に効く変更がビルドされず、広すぎると関係ない変更で本番が再起動する）。
+    #   - packages/{server,shared,database}: ソースの COPY（Dockerfile.prod 自身も packages/server/ の下）
+    #   - 根の pnpm-workspace.yaml / package.json / pnpm-lock.yaml / tsconfig.base.json: 先頭の COPY
+    #   - この workflow 自身: ビルドの手順・タグ・ビルド引数
+    # 入れていないもの（COPY はされるが、server の実行物を変えない）:
+    #   packages/web/package.json・packages/worker/package.json（依存を変えれば pnpm-lock.yaml が変わる）、
+    #   .githooks/（install の prepare フックが開けるためだけ）、.dockerignore（COPY は明示のパスだけ）。
+    paths:
+      - packages/server/**
+      - packages/shared/**
+      - packages/database/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
+      - tsconfig.base.json
+      - .github/workflows/build-push-server.yml
   workflow_dispatch:
-  # staging 導入時に自動ビルドを有効化する候補（当面は手動）:
-  # push:
-  #   branches: [main]
-  #   paths: [packages/server/**, packages/shared/**, packages/database/**, pnpm-lock.yaml]
+
+# 同じ ref のビルドは直列にする（古いコミットのビルドが、あとから `latest` を上書きしないように）。
+# 待っている回は、より新しい回が来れば GitHub が取り消す（走るのは「今の 1 つ」と「最新の 1 つ」だけ）。
+# 走っている回は打ち切らない（cancel-in-progress: false）: push の途中で止めると、タグの一部だけが
+# 付け替わった半端な状態が残りうる。待っても 1 回分のビルドで済む。
+concurrency:
+  group: build-push-server-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -30,6 +54,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `latest` は「既定の枝（main）の、いま最新のコミット」のビルドにだけ付ける。
+      # 古い回の再実行（Re-run）や、直列待ちの間に main が進んだ回が、`latest` を古い版へ戻さないように、
+      # push の直前にリモートの main の先頭と照らす。違えば `latest` を付けない（sha / 枝のタグは付ける）。
+      - name: Decide whether to move latest
+        id: latest
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "既定の枝ではない（$GITHUB_REF）ので latest は付けない"
+            echo "enable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          head=$(git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut -f1)
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo "enable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$DEFAULT_BRANCH の先頭（$head）がこの回（$GITHUB_SHA）より進んでいるので latest は付けない"
+            echo "enable=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -39,11 +85,11 @@ jobs:
           # 付与するタグ:
           #   - ブランチ名（/ は - に置換）例: :main
           #   - sha-<40桁フル SHA>            固定参照用
-          #   - :latest                       デフォルトブランチ実行時のみ
+          #   - :latest                       既定の枝の最新コミットのときだけ（上の step）。本番が追いかけるタグ
           tags: |
             type=ref,event=branch
             type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ steps.latest.outputs.enable == 'true' }}
 
       # ビルドの版（GET /api/version が返す。prd/02 §9.3）。日時は UTC。
       - name: Build time
