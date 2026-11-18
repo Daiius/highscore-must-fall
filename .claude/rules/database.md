@@ -53,3 +53,6 @@
   同梱の理由は**適用する SQL・カタログとコードのバージョンが構造的に一致すること**。
   **`migrate.ts` はパッケージルート直下に置く**——`migrationsFolder` をファイル相対で解くので、
   `src/` に置くと dev（`packages/database/drizzle`）とバンドル後（`/app/drizzle`）でずれる。
+- ⚠ **server は main に入ると数分で本番に出る**（[`prd/02-architecture.md`](../../prd/02-architecture.md) §9.4）。
+  マイグレーションは**古い server でも動く形（足すだけ）**にし、**先に本番へ流してからマージする**。
+  マイグレーションを伴う PR は、マージの前に所有者と段取りを決める（エージェントは勝手にマージしない）。
