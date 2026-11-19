@@ -3,13 +3,18 @@
 > このファイルがリポジトリの**正典**です（使用する各コーディングエージェント共通）。簡潔・リンク中心に保つこと。
 > 詳細仕様は [`prd/`](./prd/)、コーディング規約は [`.claude/rules/`](./.claude/rules/) を参照。
 
-## ⚠ main に入ると server は数分で本番に出る（マージの前に必ず読む）
+## ⚠ main に入ると server（と web）は数分で本番に出る（マージの前に必ず読む）
 
 - **server は、main にマージされると数分で本番に出る。** main への push で server のイメージがビルドされ
   （[`build-push-server.yml`](./.github/workflows/build-push-server.yml)。`paths` に当たる変更のとき）、
   本番の VPS がレジストリの `latest` を数分おきに見て、変わっていれば自動で入れ替える。
   **「マージしても本番には出ない」と考えない。** 出したくない変更は main に入れない。
-- 対象は server だけ。**web（静的配信）と worker は対象外**で、今までどおり所有者が手で出す。
+- **web（静的配信）も同じ形にする**（[`build-push-web.yml`](./.github/workflows/build-push-web.yml)。静的ビルドだけを入れたイメージを作り、
+  VPS が中身を配信ディレクトリへ世代として取り出す。prd/02 §9.2）。
+  **状態: 準備中**（workflow はあるが、VPS はまだ web の `latest` を追いかけていない。有効にするのは所有者）。
+  有効になるまでは、main に入っても web は本番に出ない（今までどおり所有者が手で出す）。
+  有効になったあとは、web の変更も server と同じく数分で本番に出る。
+- **worker は対象外**で、今までどおり所有者が手で出す。
 - 🔒 **次の PR は、マージの前に所有者と段取りを決める。エージェントは勝手にマージしない。**
   - マイグレーション（`packages/database` のスキーマや `drizzle/` の変更）を伴う
   - 環境変数の追加・変更を伴う（本番の env は所有者が置く）
@@ -17,9 +22,9 @@
 - マイグレーションは**古い server でも動く形（足すだけ）**にし、**先に本番へ流してからマージする**。
   マージすると新しい server が先に出るため、順序が逆だと新しい server が古いスキーマの上で動く。
   切り戻したときも、戻した server が新しいスキーマの上で動けるようにしておく。
-- 本番の版は `GET /api/version` の `commit` で確かめる（[prd/02](./prd/02-architecture.md) §9.3）。
+- 本番の版は `GET /api/version` の `commit` で確かめる（[prd/02](./prd/02-architecture.md) §9.3）。web は配信される `/version.json`（Actions で作ったものだけが持つ）。
   **おかしいときの戻し方（VPS での切り戻し）は所有者の作業。エージェントは VPS に触らない。**
-- 詳細は [prd/02](./prd/02-architecture.md) §9.4。デプロイの仕組みの設計は、所有者の非公開のリポジトリにある。
+- 詳細は [prd/02](./prd/02-architecture.md) §9.4（web は §9.2）。デプロイの仕組みの設計は、所有者の非公開のリポジトリにある。
 
 ## プロジェクト目的
 
@@ -59,7 +64,7 @@
 | [`packages/database`](./packages/database) | Drizzle スキーマ・マイグレーション・DB クライアント・seed |
 | [`packages/server`](./packages/server) | Hono(RPC) API・better-auth・ingestion アダプタ・(将来)MCP |
 | [`packages/web`](./packages/web) | Vite + React + TanStack Router + Tailwind の UI |
-| [`packages/deploy-static`](./packages/deploy-static) | web の静的ビルドを配信先へ置くデプロイツール。`assets/` は今回と 1 つ前の世代だけ残す（prd/02 §9.2） |
+| [`packages/deploy-static`](./packages/deploy-static) | web の静的ビルドを配信先へ置く手元のデプロイツール。`assets/` は今回と 1 つ前の世代だけ残す。追従を有効にしたあとは緊急用（prd/02 §9.2） |
 | [`packages/worker`](./packages/worker) | スクショ自動解析のジョブ処理。**server と分離した実行環境で稼働**（開発用 compose 外。コンテナ用イメージは `packages/worker/Dockerfile`、起動する compose は運用側。prd/04 §9。具体構成は `.claude-personal/` の運用メモ） |
 
 ## 開発コマンド
@@ -73,7 +78,7 @@ pnpm format       # Biome format
 pnpm test         # Vitest
 pnpm db:migrate   # Drizzle マイグレーション適用（本番イメージにも同じエントリを同梱。prd/02 §9.1）
 pnpm db:seed      # 初期カタログ等のシード投入（冪等）
-pnpm deploy:web   # web をビルドして配信先へ（既定 dry-run、--apply で反映。接続先は .env.deploy。prd/02 §9.2）
+pnpm deploy:web   # web をビルドして配信先へ（既定 dry-run、--apply で反映。接続先は .env.deploy。追従の有効後は緊急用。prd/02 §9.2）
 ```
 
 > 注: 環境変数の実体（`.env*`）はコミットしない。雛形は `*.env.example` を参照。
