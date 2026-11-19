@@ -1,0 +1,63 @@
+# 本番 web の静的ビルドだけを入れたイメージ（prd/02 §9.2）。動かすためのイメージではない。
+# 本番の VPS は、このイメージを pull して起動せずに（docker create → docker cp）/site の中身を取り出し、
+# nginx の配信ディレクトリへ「世代」として置く。コンテナは作るだけで起動しないので、シェルも node も要らない（scratch）。
+# 手で中を見るときも起動はできない: docker create --entrypoint / <image> → docker cp <cid>:/site/. <dir> → docker rm <cid>
+# ビルドは .github/workflows/build-push-web.yml（main への push）。対象アーキは問わない（中身は静的ファイルだけ）。
+
+# ---- build: 依存解決 + Vite のビルド ----------------------------------------------------
+# server の Dockerfile.prod と同じ系統（Debian 13・Node 24）。
+FROM node:24-trixie-slim AS build
+WORKDIR /workspace
+RUN corepack enable
+
+# マニフェスト類を先にコピー（ソース変更でレイヤキャッシュを壊さない）。
+# catalog: 参照の解決に pnpm-workspace.yaml が必須（無いと ERR_PNPM_CATALOG_ENTRY_NOT_FOUND）。
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/shared/package.json   packages/shared/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/server/package.json   packages/server/package.json
+COPY packages/web/package.json      packages/web/package.json
+COPY packages/worker/package.json   packages/worker/package.json
+# pnpm の prepare フック（.githooks/install.sh）が install 時に呼ばれる。
+# git 管理外では自身で exit 0 するが、ファイルが無いと sh が開けず落ちるため先にコピーする。
+COPY .githooks .githooks
+
+# web とその依存だけを解決する。web の build は `tsc && vite build` で、tsc が API の型
+# （server/app → database・shared）を辿るので、server・database も入る（`web...`）。worker は入れない。
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter web...
+
+# ビルドに要るソース（tsc が辿る server・database・shared と、web 本体）。
+COPY packages/shared   packages/shared
+COPY packages/database packages/database
+COPY packages/server   packages/server
+COPY packages/web      packages/web
+
+# 手元の `pnpm deploy:web` と同じビルド（→ packages/web/dist）。
+# VITE_API_BASE_URL は渡さない（同一オリジン。/api は nginx が server へ渡す。src/api.ts・.env.web.example）。
+RUN pnpm --filter web build
+
+# 版のファイル（配信される /version.json。形は server の GET /api/version と同じ { commit, builtAt, dirty }。prd/02 §9.3）。
+# `.dockerignore` が `.git` を除くので、イメージの中では git から取れない——ビルド引数で渡す。分からない値は unknown（ビルドは止めない）。
+#   --build-arg GIT_COMMIT=$(git rev-parse HEAD)
+#   --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+#   --build-arg GIT_DIRTY=$(test -z "$(git status --porcelain --untracked-files=no)" && echo false || echo true)
+# ビルドの後ろに置く（値が毎回変わるので、手前の層のキャッシュを壊さないように）。
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ARG GIT_DIRTY=false
+RUN set -eu; \
+    commit=$(printf '%s' "$GIT_COMMIT" | tr 'A-F' 'a-f'); \
+    printf '%s' "$commit" | grep -Eqx '[0-9a-f]{40}' || commit=unknown; \
+    built=$BUILD_TIME; \
+    printf '%s' "$built" | grep -Eqx '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z' || built=unknown; \
+    case "$GIT_DIRTY" in true|TRUE|1) dirty=true ;; *) dirty=false ;; esac; \
+    printf '{"commit":"%s","builtAt":"%s","dirty":%s}\n' "$commit" "$built" "$dirty" > packages/web/dist/version.json; \
+    cat packages/web/dist/version.json
+
+# ---- 成果物だけ ---------------------------------------------------------------------------
+FROM scratch
+COPY --from=build /workspace/packages/web/dist /site
+# 本番の VPS は、取り出す前にこのコミットと /site/version.json の commit を照合する（server のイメージと同じ環境変数）。
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
