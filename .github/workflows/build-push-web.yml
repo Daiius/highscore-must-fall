@@ -2,7 +2,8 @@ name: Build and push web image to GHCR
 
 # 本番 web の静的ビルド（Vite の出力 + version.json）だけを入れたイメージを CI でビルドして GHCR へ push する。
 # 形は build-push-server.yml と同じ（build は SHA のタグだけ・latest は job「promote」が main に突き合わせて動かす）。
-# main への push（下の paths に当たるとき）と、手動起動（workflow_dispatch）で走る。PR・ほかの枝の push では走らない。
+# main への push（下の paths に当たるとき）と、手動起動（workflow_dispatch。どの枝でもよい）で走る。PR・ほかの枝の push では走らない。
+# 手動起動はその枝の先頭の sha-<40 桁> を作るだけで、latest は動かさない（promote は main の回だけ。候補も main のコミットだけ）。
 # イメージは起動しない。本番の VPS が中の /site を取り出して、nginx の配信ディレクトリへ世代として置く（prd/02 §9.2）。
 # ⚠ 本番の VPS が `latest` を追いかけるようにすると（VPS の側の登録。所有者が有効にする）、
 #   **main に入った web の変更は、このビルドを経て数分で本番に出る**（AGENTS.md「main に入ると本番に出る」）。
@@ -67,12 +68,12 @@ jobs:
         with:
           # 最終的なイメージ名は ghcr.io/daiius/highscore-must-fall-web（小文字化される）。
           images: ghcr.io/${{ github.repository }}-web
-          # 付与するタグ:
-          #   - ブランチ名（/ は - に置換）例: :main
-          #   - sha-<40桁フル SHA>            固定参照用
-          #   （:latest はここでは付けない。この回のあとの job「promote」が、main に突き合わせて動かす）
+          # 付与するタグは sha-<40桁フル SHA> だけ（その回のコミットのビルド。promote はこれを main の候補として探す）。
+          # 枝の名前のタグは付けない: 手動起動で選んだ枝の名前が予約のタグ（latest・sha-…）と同じだと、
+          # main との突き合わせを経ずにそのタグを書き換えてしまう。:latest は job「promote」だけが動かす。
+          flavor: |
+            latest=false
           tags: |
-            type=ref,event=branch
             type=sha,format=long
 
       # ビルドの版（配信される /version.json と、イメージの環境変数 GIT_COMMIT。prd/02 §9.2・§9.3）。日時は UTC。
