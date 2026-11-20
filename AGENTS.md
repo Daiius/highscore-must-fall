@@ -12,8 +12,9 @@
 - **web（静的配信）も同じ形にする**（[`build-push-web.yml`](./.github/workflows/build-push-web.yml)。静的ビルドだけを入れたイメージを作り、
   VPS が中身を配信ディレクトリへ世代として取り出す。prd/02 §9.2）。
   **状態: 準備中**（workflow はあるが、VPS はまだ web の `latest` を追いかけていない。有効にするのは所有者）。
-  有効になるまでは、main に入っても web は本番に出ない（今までどおり所有者が手で出す）。
-  有効になったあとは、web の変更も server と同じく数分で本番に出る。
+  有効になるまでは、main に入っても web は本番に出ない（今までどおり所有者が `pnpm deploy:web` で手で出す）。
+  有効になったあとは、web の変更も server と同じく数分で本番に出る。**有効になったあとは `pnpm deploy:web` を使わない**
+  （緊急でも。配っている世代を直接書き換えてしまう）。緊急の戻しは所有者が VPS で行う（prd/02 §9.2.1）。
 - **worker は対象外**で、今までどおり所有者が手で出す。
 - 🔒 **次の PR は、マージの前に所有者と段取りを決める。エージェントは勝手にマージしない。**
   - マイグレーション（`packages/database` のスキーマや `drizzle/` の変更）を伴う
@@ -64,7 +65,7 @@
 | [`packages/database`](./packages/database) | Drizzle スキーマ・マイグレーション・DB クライアント・seed |
 | [`packages/server`](./packages/server) | Hono(RPC) API・better-auth・ingestion アダプタ・(将来)MCP |
 | [`packages/web`](./packages/web) | Vite + React + TanStack Router + Tailwind の UI |
-| [`packages/deploy-static`](./packages/deploy-static) | web の静的ビルドを配信先へ置く手元のデプロイツール。`assets/` は今回と 1 つ前の世代だけ残す。追従を有効にしたあとは緊急用（prd/02 §9.2） |
+| [`packages/deploy-static`](./packages/deploy-static) | web の静的ビルドを配信先へ置く手元のデプロイツール。`assets/` は今回と 1 つ前の世代だけ残す。追従が準備中のあいだの出し方で、**追従を有効にしたあとは使わない**（緊急でも。prd/02 §9.2） |
 | [`packages/worker`](./packages/worker) | スクショ自動解析のジョブ処理。**server と分離した実行環境で稼働**（開発用 compose 外。コンテナ用イメージは `packages/worker/Dockerfile`、起動する compose は運用側。prd/04 §9。具体構成は `.claude-personal/` の運用メモ） |
 
 ## 開発コマンド
@@ -78,7 +79,7 @@ pnpm format       # Biome format
 pnpm test         # Vitest
 pnpm db:migrate   # Drizzle マイグレーション適用（本番イメージにも同じエントリを同梱。prd/02 §9.1）
 pnpm db:seed      # 初期カタログ等のシード投入（冪等）
-pnpm deploy:web   # web をビルドして配信先へ（既定 dry-run、--apply で反映。接続先は .env.deploy。追従の有効後は緊急用。prd/02 §9.2）
+pnpm deploy:web   # web をビルドして配信先へ（既定 dry-run、--apply で反映。接続先は .env.deploy。追従の準備中だけ使う。prd/02 §9.2）
 ```
 
 > 注: 環境変数の実体（`.env*`）はコミットしない。雛形は `*.env.example` を参照。

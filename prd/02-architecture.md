@@ -226,7 +226,9 @@ server（§9.4）と同じ道に乗せる。**状態: 準備中**——workflow 
 
 - 流れ: main への push → [`build-push-web.yml`](../.github/workflows/build-push-web.yml) が、静的ビルドだけを入れたイメージ
   （[`packages/web/Dockerfile.static`](../packages/web/Dockerfile.static)。`FROM scratch` の `/site` に `dist/` の中身）を作り、
-  `sha-<40 桁>`（と `main`）で push → 別の job が main に突き合わせて `latest` を動かす（形と考え方は §9.4 の server と同じ）
+  `sha-<40 桁>` だけで push → 別の job が main に突き合わせて `latest` を動かす（考え方は §9.4 の server と同じ）。
+  枝の名前のタグは付けない（手動起動で選んだ枝の名前が `latest` などと同じだと、突き合わせを経ずに書き換えるため）。
+  手動起動（workflow_dispatch）はどの枝でもでき、その枝の先頭の `sha-<40 桁>` を作るだけで `latest` は動かさない
   → 本番の VPS が `latest` を数分おきに見て、変わっていればイメージを pull し、**起動せずに**中の `/site` を取り出して、
   配信ディレクトリへ新しい「世代」として置き、リンクを切り替える。nginx 越しにページとそれが指す JS・CSS が返ることを確かめ、駄目なら 1 つ前の世代に戻す。
 - **開きっぱなしのタブ**: VPS の側が、新しい世代に 1 つ前の世代のファイル（自分のものだけ）も併せて置く。§9.2.2 の「今回と 1 つ前」と同じ性質。
@@ -237,6 +239,7 @@ server（§9.4）と同じ道に乗せる。**状態: 準備中**——workflow 
   web の `tsc` は API の型（`server/app` → `database`・`shared`）を辿るので、workflow の `paths` は
   `packages/{web,shared,server,database}/**`・根の `pnpm-workspace.yaml` / `package.json` / `pnpm-lock.yaml` / `tsconfig.base.json`・
   根の `.dockerignore`・workflow 自身。server・database だけの変更でも web の世代が進む（JS・CSS は変わらず `version.json` だけが変わる）。
+- **時期で使い分ける**: 準備中のあいだ（今）は、今までどおり §9.2.2 の `pnpm deploy:web` で出す。
 - 🔒 **追従を有効にしたあとは `pnpm deploy:web` を使わない（緊急でも）。** VPS の配信ディレクトリは世代へのリンクになっていて、
   手で rsync すると今の世代の中身をその場で書き換える（記録されたイメージと中身・`version.json` が食い違い、次の版が引き継ぐファイルの記録とも合わなくなる）。
   しかも VPS は記録の上では版が合っているとみなすので、**次に main が変わるまで戻らない**。
@@ -245,7 +248,7 @@ server（§9.4）と同じ道に乗せる。**状態: 準備中**——workflow 
 
 #### 9.2.2 手で出す（`pnpm deploy:web`）
 
-追従を有効にするまでの出し方。本体は `packages/deploy-static`（seseraki の同名パッケージを移植したもの）。接続先は `.env.deploy`
+追従を有効にするまで（準備中のあいだ）の出し方。有効にしたあとは使わない（§9.2.1）。本体は `packages/deploy-static`（seseraki の同名パッケージを移植したもの）。接続先は `.env.deploy`
 （雛形 `.env.deploy.example`）。**既定は dry-run（計画の表示のみ）で、`--apply` を付けたときだけ書き込む。**
 
 - **`assets/` には「今回」と「1 つ前」のデプロイのファイルだけを残す。** 上書きだけだと古いチャンクが
