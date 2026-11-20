@@ -25,6 +25,8 @@
   切り戻したときも、戻した server が新しいスキーマの上で動けるようにしておく。
 - 本番の版は `GET /api/version` の `commit` で確かめる（[prd/02](./prd/02-architecture.md) §9.3）。web は配信される `/version.json`（Actions で作ったものだけが持つ）。
   **おかしいときの戻し方（VPS での切り戻し）は所有者の作業。エージェントは VPS に触らない。**
+- server は停止の合図（SIGTERM / SIGINT）で処理中のリクエストを返し切ってから終了する（上限 7.5 秒。停止の猶予 10 秒に収める）。
+  closer を足す・上限を変えるときは [prd/02](./prd/02-architecture.md) §9.5 と `packages/server/src/lib/graceful-shutdown.ts` の JSDoc を読む。
 - 詳細は [prd/02](./prd/02-architecture.md) §9.4（web は §9.2）。デプロイの仕組みの設計は、所有者の非公開のリポジトリにある。
 
 ## プロジェクト目的
