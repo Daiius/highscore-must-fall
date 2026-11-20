@@ -213,15 +213,46 @@ interface BlobStore {
   distroless の既定（ENTRYPOINT が node）に戻すと本番の compose の書き方が変わるので、Dockerfile で
   ENTRYPOINT を空にして `node` を PATH に置いている（テストが照合する）。
 
-### 9.2 web の静的配信は世代を管理して置く（`pnpm deploy:web`）
+### 9.2 web の静的配信は世代を管理して置く
 
-web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `assets/`）を配信ディレクトリへ置く。
-本体は `packages/deploy-static`（seseraki の同名パッケージを移植したもの）。接続先は `.env.deploy`
+web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `assets/`）を配信ディレクトリへ置く。置き方は 2 つある。
+どちらも**開きっぱなしのタブを壊さない**ことを同じに守る: 新しい版を置いたあとも、1 つ前の版の `assets/` のファイルを残す
+（全部消すと、デプロイ前から開いていたタブが旧チャンクを取りに来て 404 になる。1 つ前まで残せば、次の画面遷移までは動く）。
+
+#### 9.2.1 main に入ると出る（タグの追従。準備中）
+
+server（§9.4）と同じ道に乗せる。**状態: 準備中**——workflow はあるが、本番の VPS はまだ web の `latest` を追いかけていない
+（有効にするのは所有者。有効になるまでは §9.2.2 で手で出す）。
+
+- 流れ: main への push → [`build-push-web.yml`](../.github/workflows/build-push-web.yml) が、静的ビルドだけを入れたイメージ
+  （[`packages/web/Dockerfile.static`](../packages/web/Dockerfile.static)。`FROM scratch` の `/site` に `dist/` の中身）を作り、
+  `sha-<40 桁>` だけで push → 別の job が main に突き合わせて `latest` を動かす（考え方は §9.4 の server と同じ）。
+  枝の名前のタグは付けない（手動起動で選んだ枝の名前が `latest` などと同じだと、突き合わせを経ずに書き換えるため）。
+  手動起動（workflow_dispatch）はどの枝でもでき、その枝の先頭の `sha-<40 桁>` を作るだけで `latest` は動かさない
+  → 本番の VPS が `latest` を数分おきに見て、変わっていればイメージを pull し、**起動せずに**中の `/site` を取り出して、
+  配信ディレクトリへ新しい「世代」として置き、リンクを切り替える。nginx 越しにページとそれが指す JS・CSS が返ることを確かめ、駄目なら 1 つ前の世代に戻す。
+- **開きっぱなしのタブ**: VPS の側が、新しい世代に 1 つ前の世代のファイル（自分のものだけ）も併せて置く。§9.2.2 の「今回と 1 つ前」と同じ性質。
+- **版**: イメージは配信される `/version.json`（`{ "commit", "builtAt", "dirty" }`。§9.3 の server と同じ形）と、環境変数 `GIT_COMMIT` を持つ。
+  VPS は切り替える前に、両者のコミットが一致することを確かめる。外からは `https://<本番のホスト>/version.json` で確かめる。
+  §9.2.2 で置いたビルドは `version.json` を持たない。
+- ビルドは手元の `pnpm deploy:web` と同じ `pnpm --filter web build`（`tsc && vite build`）。`VITE_API_BASE_URL` は渡さない（同一オリジン。§5.1）。
+  web の `tsc` は API の型（`server/app` → `database`・`shared`）を辿るので、workflow の `paths` は
+  `packages/{web,shared,server,database}/**`・根の `pnpm-workspace.yaml` / `package.json` / `pnpm-lock.yaml` / `tsconfig.base.json`・
+  根の `.dockerignore`・workflow 自身。server・database だけの変更でも web の世代が進む（JS・CSS は変わらず `version.json` だけが変わる）。
+- **時期で使い分ける**: 準備中のあいだ（今）は、今までどおり §9.2.2 の `pnpm deploy:web` で出す。
+- 🔒 **追従を有効にしたあとは `pnpm deploy:web` を使わない（緊急でも）。** VPS の配信ディレクトリは世代へのリンクになっていて、
+  手で rsync すると今の世代の中身をその場で書き換える（記録されたイメージと中身・`version.json` が食い違い、次の版が引き継ぐファイルの記録とも合わなくなる）。
+  しかも VPS は記録の上では版が合っているとみなすので、**次に main が変わるまで戻らない**。
+  緊急で戻したいときは、所有者が VPS で 1 つ前の世代に戻して固定する（server と同じ手順。仕組みの設計は所有者の非公開のリポジトリにある）。
+  `pnpm deploy:web` に戻るのは、追従をやめて、配信ディレクトリを実体のディレクトリに戻したあと。`packages/deploy-static` はそのために残す。
+
+#### 9.2.2 手で出す（`pnpm deploy:web`）
+
+追従を有効にするまで（準備中のあいだ）の出し方。有効にしたあとは使わない（§9.2.1）。本体は `packages/deploy-static`（seseraki の同名パッケージを移植したもの）。接続先は `.env.deploy`
 （雛形 `.env.deploy.example`）。**既定は dry-run（計画の表示のみ）で、`--apply` を付けたときだけ書き込む。**
 
 - **`assets/` には「今回」と「1 つ前」のデプロイのファイルだけを残す。** 上書きだけだと古いチャンクが
-  溜まり続け、全部消すとデプロイ前から開いていたタブが旧チャンクを取りに来て 404 になる。
-  1 つ前まで残せば、開きっぱなしのタブも次の画面遷移までは動く。
+  溜まり続け、全部消すと開きっぱなしのタブが 404 になる（§9.2 の冒頭）。
 - 世代の一覧（`current.txt` / `prev.txt`）は**配信外**のディレクトリに置く。初回（一覧が無い）は何も消さない
   ——前からあったファイルが何者か分からないため。同じビルドの再デプロイでは世代を進めない。
   - 2 回目以降の削除は「今回 ∪ 1 つ前」に無いもの**すべて**が対象で、一覧に載っていないかは問わない。
@@ -253,7 +284,7 @@ web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `as
   dev（`Dockerfile.dev` と compose）は渡さないので `unknown`。
 - **`build-push-server.yml` が渡す**（コミットは `github.sha`・日時は UTC・`dirty` は `false`）。イメージには
   `sha-<40 桁の SHA>` のタグが付く。手元でビルドするときは `--build-arg` を自分で付ける（付けなければ `unknown`）。
-- 対象は server だけ。web（静的配信）の版は未対応。
+- web（静的配信）の版は、配信される `/version.json`（同じ形。Actions で作ったイメージのものだけが持つ。§9.2.1）。
 
 ### 9.4 server は main に入ると本番に出る（タグの追従）
 
@@ -286,4 +317,4 @@ web は Vite の静的ビルド（`index.html` + 内容ハッシュ付きの `as
     同梱の `migrate.js` で流すには、そのマイグレーションを含むイメージが先に要る。PR の枝で workflow を手動起動すれば、
     `latest` を動かさずに `sha-<40 桁>` のイメージができる。どう流すかは所有者と決める）。
     ⚠ ロールバックで server を戻しても、スキーマは戻らない（§9.1）。戻した server が新しいスキーマで動けることが前提になる。
-- web（静的配信。§9.2）と worker は対象外。今までどおり手で出す。
+- worker は対象外。今までどおり手で出す。web（静的配信）は同じ形に乗せる準備中（§9.2.1）。有効になるまでは手で出す（§9.2.2）。
