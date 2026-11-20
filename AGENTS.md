@@ -11,7 +11,7 @@
   **「マージしても本番には出ない」と考えない。** 出したくない変更は main に入れない。
 - **web（静的配信）も同じ形にする**（[`build-push-web.yml`](./.github/workflows/build-push-web.yml)。静的ビルドだけを入れたイメージを作り、
   VPS が中身を配信ディレクトリへ世代として取り出す。prd/02 §9.2）。
-  **状態: 準備中**（workflow はあるが、VPS はまだ web の `latest` を追いかけていない。有効にするのは所有者）。
+  **状態: 有効（2026-11-20 に有効化）**。有効にしたあとは、手元の `pnpm deploy:web` を使わない（緊急の戻しは VPS で行う）。
   有効になるまでは、main に入っても web は本番に出ない（今までどおり所有者が `pnpm deploy:web` で手で出す）。
   有効になったあとは、web の変更も server と同じく数分で本番に出る。**有効になったあとは `pnpm deploy:web` を使わない**
   （緊急でも。配っている世代を直接書き換えてしまう）。緊急の戻しは所有者が VPS で行う（prd/02 §9.2.1）。
@@ -79,7 +79,7 @@ pnpm format       # Biome format
 pnpm test         # Vitest
 pnpm db:migrate   # Drizzle マイグレーション適用（本番イメージにも同じエントリを同梱。prd/02 §9.1）
 pnpm db:seed      # 初期カタログ等のシード投入（冪等）
-pnpm deploy:web   # web をビルドして配信先へ（既定 dry-run、--apply で反映。接続先は .env.deploy。追従の準備中だけ使う。prd/02 §9.2）
+pnpm deploy:web   # web をビルドして配信先へ（既定 dry-run、--apply で反映。接続先は .env.deploy。追従を有効にした 2026-11-20 以降は使わない。prd/02 §9.2）
 ```
 
 > 注: 環境変数の実体（`.env*`）はコミットしない。雛形は `*.env.example` を参照。
